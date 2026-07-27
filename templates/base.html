@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RestoIQ — {% block titulo %}Dashboard{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}" />
+  {% block estilos %}{% endblock %}
+</head>
+<body>
+
+  <!-- ══ SIDEBAR ══ -->
+  <aside class="sidebar" id="sidebar">
+
+    <div class="sidebar-header">
+      <a href="{{ url_for('dashboard.index') }}" class="brand">
+        <div class="brand-icon">
+          <img src="{{ url_for('static', filename='logo.png') }}" alt="RestoIQ" />
+        </div>
+        <span class="brand-name">Resto<span>IQ</span></span>
+      </a>
+      <button class="toggle-btn" id="toggleSidebar">
+        <i data-lucide="menu"></i>
+      </button>
+    </div>
+
+<nav class="sidebar-nav">
+
+  <p class="nav-section-label">Principal</p>
+
+  <a href="{{ url_for('dashboard.index') }}" class="nav-item {% if request.endpoint == 'dashboard.index' %}active{% endif %}" data-tooltip="Dashboard">
+    <span class="nav-icon"><i data-lucide="layout-dashboard"></i></span>
+    <span class="nav-label">Dashboard</span>
+  </a>
+
+  <a href="{{ url_for('upload.index') }}" class="nav-item {% if request.endpoint == 'upload.index' %}active{% endif %}" data-tooltip="Subir datos">
+    <span class="nav-icon"><i data-lucide="upload"></i></span>
+    <span class="nav-label">Subir datos</span>
+    <span class="nav-badge">Nuevo</span>
+  </a>
+
+  <p class="nav-section-label">Análisis ML</p>
+
+  <a href="{{ url_for('prediccion.index') }}"
+   class="nav-item {% if request.endpoint == 'prediccion.index' %}active{% endif %}"
+   data-tooltip="Predicción">
+    <span class="nav-icon"><i data-lucide="trending-up"></i></span>
+    <span class="nav-label">Predicción de demanda</span>
+  </a>
+
+  <a href="{{ url_for('abastecimiento.index') }}" class="nav-item {% if request.endpoint == 'abastecimiento.index' %}active{% endif %}" data-tooltip="Clasificación">
+    <span class="nav-icon"><i data-lucide="star"></i></span>
+    <span class="nav-label">Clasificación</span>
+  </a>
+
+  <a href="#" class="nav-item" data-tooltip="Insights">
+    <span class="nav-icon"><i data-lucide="lightbulb"></i></span>
+    <span class="nav-label">Insights</span>
+  </a>
+
+  <p class="nav-section-label">Sistema</p>
+
+  <a href="{{ url_for('configuracion.index') }}" class="nav-item {% if request.endpoint == 'configuracion.index' %}active{% endif %}" data-tooltip="Configurar negocio">
+    <span class="nav-icon"><i data-lucide="store"></i></span>
+    <span class="nav-label">Configurar negocio</span>
+  </a>
+
+</nav>
+
+    <div class="sidebar-user">
+      <div class="user-avatar">{{ current_user.nombre[0] | upper }}</div>
+      <div class="user-info">
+        <p class="user-name">{{ current_user.nombre }}</p>
+        <p class="user-role">Administrador</p>
+      </div>
+      <a href="{{ url_for('auth.logout') }}" class="logout-btn" title="Cerrar sesión">
+        <i data-lucide="log-out"></i>
+      </a>
+    </div>
+
+  </aside>
+
+  <!-- ══ MAIN ══ -->
+  <div class="main" id="main">
+
+    <header class="topbar">
+      <div class="topbar-title">
+        <h1>{% block titulo_pagina %}Dashboard{% endblock %}</h1>
+        <p>{% block subtitulo_pagina %}Análisis de datos de tu negocio · RestoIQ{% endblock %}</p>
+      </div>
+      <div class="topbar-actions">
+        {% block topbar_acciones %}
+        <a href="{{ url_for('upload.index') }}" class="btn-upload">
+          <i data-lucide="upload"></i>
+          Subir datos
+        </a>
+        {% endblock %}
+      </div>
+    </header>
+
+    <main class="content">
+
+      <!-- Mensajes flash -->
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          {% for category, message in messages %}
+            <div class="flash flash-{{ category }}">
+              <i data-lucide="{% if category == 'error' %}alert-circle{% else %}check-circle{% endif %}"></i>
+              {{ message }}
+            </div>
+          {% endfor %}
+        {% endif %}
+      {% endwith %}
+
+      {% block contenido %}{% endblock %}
+
+    </main>
+  </div>
+
+  <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+  <script>lucide.createIcons();</script>
+  {% block scripts %}{% endblock %}
+
+</body>
+</html>

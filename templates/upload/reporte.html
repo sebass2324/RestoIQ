@@ -1,0 +1,560 @@
+{% extends "base.html" %}
+{% block estilos %}
+<link rel="stylesheet"
+      href="{{ url_for('static', filename='css/upload.css') }}">
+<style>
+  .detalle-tecnico {
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: var(--white);
+    margin-top: 1.5rem;
+    overflow: hidden;
+  }
+  .detalle-tecnico summary {
+    cursor: pointer;
+    list-style: none;
+    padding: 1rem 1.25rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--dark);
+  }
+  .detalle-tecnico summary::-webkit-details-marker { display: none; }
+  .detalle-tecnico summary .hint {
+    font-weight: 400;
+    color: var(--gray-mid);
+    font-size: 0.78rem;
+    margin-left: 4px;
+  }
+  .detalle-tecnico summary i { width: 16px; height: 16px; color: var(--gray-mid); }
+  .detalle-tecnico[open] summary { border-bottom: 1px solid var(--border); }
+  .detalle-tecnico-body { padding: 1.25rem; }
+  .resumen-negocio-cta {
+    display: flex;
+    gap: 0.75rem;
+    margin-top: 0.75rem;
+  }
+  .btn-secondary-sm {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--white);
+    color: var(--purple);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.5rem 1rem;
+    font-size: 0.82rem;
+    font-weight: 600;
+    text-decoration: none;
+  }
+  .btn-secondary-sm:hover { background: var(--purple-lt); }
+
+  /* Barra de progreso del wizard */
+  .wizard-progress {
+    display: flex;
+    align-items: center;
+    margin-bottom: 1.5rem;
+    max-width: 480px;
+  }
+  .wizard-step {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--gray-mid);
+    white-space: nowrap;
+  }
+  .wizard-step .dot {
+    width: 24px; height: 24px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--gray-lt);
+    color: var(--gray-mid);
+    font-size: 0.72rem;
+    flex-shrink: 0;
+  }
+  .wizard-step .dot i { width: 12px; height: 12px; }
+  .wizard-step.done .dot { background: var(--teal); color: white; }
+  .wizard-step.active .dot { background: var(--purple); color: white; }
+  .wizard-step.active { color: var(--dark); }
+  .wizard-line {
+    flex: 1;
+    height: 2px;
+    background: var(--border);
+    margin: 0 10px;
+    min-width: 20px;
+  }
+  .wizard-line.done { background: var(--teal); }
+
+  /* Ficha de columnas detectadas */
+  .ficha-columnas-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+  }
+  .ficha-columna-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    padding: 0.45rem 0.9rem;
+    border-radius: 99px;
+    border: 1px solid var(--border);
+  }
+  .ficha-columna-item i { width: 14px; height: 14px; }
+  .ficha-columna-item.presente { color: var(--teal); border-color: var(--teal-lt); background: var(--teal-lt); }
+  .ficha-columna-item.ausente { color: var(--gray-mid); background: var(--gray-lt); }
+</style>
+{% endblock %}
+
+{% block titulo %}Reporte{% endblock %}
+{% block titulo_pagina %}Tu negocio, en números{% endblock %}
+{% block subtitulo_pagina %}Resultado del análisis de {{ reporte.archivo }} · RestoIQ{% endblock %}
+
+{% block topbar_acciones %}
+  <a href="{{ url_for('upload.index') }}" class="btn-secondary">
+    <i data-lucide="upload"></i>
+    Subir otro archivo
+  </a>
+{% endblock %}
+
+
+{% block contenido %}
+
+<div class="wizard-progress">
+  <div class="wizard-step done"><div class="dot"><i data-lucide="check"></i></div> Subir</div>
+  <div class="wizard-line done"></div>
+  <div class="wizard-step active"><div class="dot">2</div> Resumen</div>
+  <div class="wizard-line {% if tiene_configuracion %}done{% endif %}"></div>
+  <div class="wizard-step {% if tiene_configuracion %}done{% endif %}"><div class="dot">{% if tiene_configuracion %}<i data-lucide="check"></i>{% else %}3{% endif %}</div> Configurar</div>
+</div>
+
+{# ── ESTADO GENERAL ── #}
+{% if reporte.errores %}
+  <div class="reporte-banner error">
+    <i data-lucide="alert-circle"></i>
+    <div>
+      <p class="banner-titulo">No se pudo procesar el archivo</p>
+      <p class="banner-sub">{{ reporte.errores[0] }}</p>
+    </div>
+    <a href="{{ url_for('upload.index') }}" class="btn-upload">Intentar de nuevo</a>
+  </div>
+
+{% else %}
+  <div class="reporte-banner success">
+    <i data-lucide="check-circle"></i>
+    <div>
+      <p class="banner-titulo">Tus datos ya están listos</p>
+      <p class="banner-sub">{{ reporte.filas_finales }} ventas cargadas y analizadas correctamente</p>
+    </div>
+    {% if tiene_configuracion %}
+      <a href="{{ url_for('prediccion.index') }}" class="btn-upload">
+        Continuar con tu configuración actual
+        <i data-lucide="arrow-right"></i>
+      </a>
+    {% else %}
+      <a href="{{ url_for('configuracion.index') }}" class="btn-upload">
+        Configurar tu negocio
+        <i data-lucide="arrow-right"></i>
+      </a>
+    {% endif %}
+  </div>
+  {% if tiene_configuracion %}
+    <p style="text-align:right;margin-top:-0.75rem;margin-bottom:1rem;">
+      <a href="{{ url_for('configuracion.index') }}" style="font-size:0.78rem;color:var(--gray-mid);text-decoration:none;">
+        <i data-lucide="settings" style="width:12px;height:12px;display:inline;vertical-align:-2px;"></i>
+        Editar configuración
+      </a>
+    </p>
+  {% endif %}
+{% endif %}
+
+
+{# ── FICHA INTELIGENTE DEL ARCHIVO ── #}
+<div class="reporte-section">
+  <p class="reporte-section-title">
+    <i data-lucide="file-check-2"></i>
+    Ficha del archivo
+  </p>
+
+  <div class="reporte-cards">
+    <div class="reporte-card">
+      <div class="reporte-card-icon purple"><i data-lucide="file-text"></i></div>
+      <div>
+        <p class="reporte-card-valor" style="font-size:1rem;">{{ reporte.archivo }}</p>
+        <p class="reporte-card-label">Archivo analizado</p>
+      </div>
+    </div>
+    <div class="reporte-card">
+      <div class="reporte-card-icon teal"><i data-lucide="list-checks"></i></div>
+      <div>
+        <p class="reporte-card-valor">{{ reporte.filas_finales }}</p>
+        <p class="reporte-card-label">Registros de venta</p>
+      </div>
+    </div>
+    <div class="reporte-card">
+      <div class="reporte-card-icon orange"><i data-lucide="package"></i></div>
+      <div>
+        <p class="reporte-card-valor">{{ reporte.productos_detectados }}</p>
+        <p class="reporte-card-label">Productos detectados</p>
+      </div>
+    </div>
+    <div class="reporte-card">
+      <div class="reporte-card-icon red"><i data-lucide="calendar-range"></i></div>
+      <div>
+        <p class="reporte-card-valor" style="font-size:1.05rem;">{{ reporte.periodo_desde }} – {{ reporte.periodo_hasta }}</p>
+        <p class="reporte-card-label">Período cubierto</p>
+      </div>
+    </div>
+  </div>
+
+  <p class="reporte-section-desc" style="margin-top:1.25rem;">Columnas que RestoIQ detectó en tu archivo:</p>
+  <div class="ficha-columnas-grid">
+    {% for clave, etiqueta in [
+        ("fecha","Fecha"), ("producto","Producto"), ("cantidad","Cantidad"),
+        ("precio","Precio"), ("total","Total")
+      ] %}
+      <div class="ficha-columna-item {% if clave in reporte.columnas_detectadas %}presente{% else %}ausente{% endif %}">
+        <i data-lucide="{% if clave in reporte.columnas_detectadas %}check-circle-2{% else %}circle-slash{% endif %}"></i>
+        {{ etiqueta }}
+      </div>
+    {% endfor %}
+    <div class="ficha-columna-item {% if reporte.tiene_promocion %}presente{% else %}ausente{% endif %}">
+      <i data-lucide="{% if reporte.tiene_promocion %}check-circle-2{% else %}circle-slash{% endif %}"></i>
+      Promoción
+    </div>
+    <div class="ficha-columna-item {% if reporte.tiene_descuento %}presente{% else %}ausente{% endif %}">
+      <i data-lucide="{% if reporte.tiene_descuento %}check-circle-2{% else %}circle-slash{% endif %}"></i>
+      Descuento
+    </div>
+    <div class="ficha-columna-item {% if reporte.tiene_evento_especial %}presente{% else %}ausente{% endif %}">
+      <i data-lucide="{% if reporte.tiene_evento_especial %}check-circle-2{% else %}circle-slash{% endif %}"></i>
+      Evento especial
+    </div>
+  </div>
+</div>
+
+
+{# ── RESUMEN DE NEGOCIO (lo que le importa al dueño) ── #}
+{% if kpis %}
+<div class="reporte-section">
+  <p class="reporte-section-title">
+    <i data-lucide="store"></i>
+    Resumen de tu negocio
+  </p>
+
+  <div class="reporte-cards">
+
+    <div class="reporte-card">
+      <div class="reporte-card-icon purple"><i data-lucide="dollar-sign"></i></div>
+      <div>
+        <p class="reporte-card-valor">
+          {% if kpis.tiene_ingresos %}${{ "%.2f"|format(kpis.ingreso_total) }}{% else %}{{ kpis.filas_totales }}{% endif %}
+        </p>
+        <p class="reporte-card-label">{{ "Ingresos totales" if kpis.tiene_ingresos else "Ventas registradas" }}</p>
+      </div>
+    </div>
+
+    <div class="reporte-card">
+      <div class="reporte-card-icon teal"><i data-lucide="star"></i></div>
+      <div>
+        <p class="reporte-card-valor">{{ kpis.top_producto }}</p>
+        <p class="reporte-card-label">Producto estrella</p>
+      </div>
+    </div>
+
+    <div class="reporte-card">
+      <div class="reporte-card-icon orange"><i data-lucide="calendar"></i></div>
+      <div>
+        <p class="reporte-card-valor">{{ kpis.mejor_dia }}</p>
+        <p class="reporte-card-label">Mejor día de la semana</p>
+      </div>
+    </div>
+
+    <div class="reporte-card">
+      <div class="reporte-card-icon red"><i data-lucide="calendar-days"></i></div>
+      <div>
+        <p class="reporte-card-valor" style="font-size:1.05rem;">{{ kpis.fecha_min }} – {{ kpis.fecha_max }}</p>
+        <p class="reporte-card-label">Periodo cubierto por tus datos</p>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="resumen-negocio-cta">
+    <a href="{{ url_for('prediccion.index') if tiene_configuracion else url_for('configuracion.index') }}" class="btn-upload">
+      <i data-lucide="trending-up"></i>
+      {{ "Generar predicción de demanda" if tiene_configuracion else "Configurar y predecir" }}
+    </a>
+    <a href="{{ url_for('dashboard.index') }}" class="btn-secondary-sm">
+      <i data-lucide="layout-dashboard"></i>
+      Ver Dashboard completo
+    </a>
+  </div>
+</div>
+{% endif %}
+
+
+{# ── DETALLE TÉCNICO (colapsado, para quien quiera revisarlo) ── #}
+<details class="detalle-tecnico">
+  <summary>
+    <i data-lucide="chevron-right"></i>
+    Ver detalle técnico de la limpieza
+    <span class="hint">— duplicados, columnas detectadas, valores anómalos</span>
+  </summary>
+
+  <div class="detalle-tecnico-body">
+
+    {# ── TARJETAS DE RESUMEN TÉCNICO ── #}
+    <div class="reporte-cards">
+
+      <div class="reporte-card">
+        <div class="reporte-card-icon purple"><i data-lucide="file-text"></i></div>
+        <div>
+          <p class="reporte-card-valor">{{ reporte.filas_originales }}</p>
+          <p class="reporte-card-label">Filas originales</p>
+        </div>
+      </div>
+
+      <div class="reporte-card">
+        <div class="reporte-card-icon teal"><i data-lucide="check-circle"></i></div>
+        <div>
+          <p class="reporte-card-valor">{{ reporte.filas_finales }}</p>
+          <p class="reporte-card-label">Filas limpias</p>
+        </div>
+      </div>
+
+      <div class="reporte-card">
+        <div class="reporte-card-icon orange"><i data-lucide="copy"></i></div>
+        <div>
+          <p class="reporte-card-valor">{{ reporte.duplicados }}</p>
+          <p class="reporte-card-label">Duplicados eliminados</p>
+        </div>
+      </div>
+
+      <div class="reporte-card">
+        <div class="reporte-card-icon red"><i data-lucide="alert-triangle"></i></div>
+        <div>
+          <p class="reporte-card-valor">{{ reporte.outliers | length }}</p>
+          <p class="reporte-card-label">Valores anómalos</p>
+        </div>
+      </div>
+
+    </div>
+
+
+    {# ── COLUMNAS DETECTADAS ── #}
+    <div class="reporte-section">
+      <p class="reporte-section-title">
+        <i data-lucide="table-2"></i>
+        Columnas detectadas
+      </p>
+
+      <div class="columnas-grid">
+        {% for col_estandar, col_original in reporte.columnas_detectadas.items() %}
+          <div class="columna-chip {% if col_estandar in ['fecha','producto','cantidad'] %}required{% else %}optional{% endif %}">
+            <span class="columna-original">{{ col_original }}</span>
+            <i data-lucide="arrow-right"></i>
+            <span class="columna-estandar">{{ col_estandar }}</span>
+            {% if col_estandar in ['fecha','producto','cantidad'] %}
+              <span class="columna-badge required">Requerida</span>
+            {% else %}
+              <span class="columna-badge optional">Opcional</span>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+
+      {% if reporte.columnas_ignoradas %}
+        <div class="columnas-ignoradas">
+          <i data-lucide="eye-off"></i>
+          Columnas ignoradas (no reconocidas):
+          {% for col in reporte.columnas_ignoradas %}
+            <code>{{ col }}</code>{% if not loop.last %},{% endif %}
+          {% endfor %}
+        </div>
+      {% endif %}
+
+    </div>
+
+
+    {# ── ACCIONES DE LIMPIEZA ── #}
+    <div class="reporte-section">
+      <p class="reporte-section-title">
+        <i data-lucide="sparkles"></i>
+        Acciones realizadas durante la limpieza
+      </p>
+
+      <div class="acciones-lista">
+
+        <div class="accion-item {% if reporte.duplicados > 0 %}accion-warn{% else %}accion-ok{% endif %}">
+          <i data-lucide="{% if reporte.duplicados > 0 %}trash-2{% else %}check{% endif %}"></i>
+          <div>
+            <p class="accion-titulo">Duplicados</p>
+            <p class="accion-desc">
+              {% if reporte.duplicados > 0 %}
+                Se eliminaron {{ reporte.duplicados }} filas duplicadas.
+              {% else %}
+                No se encontraron filas duplicadas.
+              {% endif %}
+            </p>
+          </div>
+        </div>
+
+        <div class="accion-item accion-ok">
+          <i data-lucide="calendar-check"></i>
+          <div>
+            <p class="accion-titulo">Fechas</p>
+            <p class="accion-desc">{{ reporte.fechas_corregidas }} fechas convertidas al formato estándar correctamente.</p>
+          </div>
+        </div>
+
+        <div class="accion-item {% if reporte.nulos_eliminados > 0 %}accion-warn{% else %}accion-ok{% endif %}">
+          <i data-lucide="{% if reporte.nulos_eliminados > 0 %}minus-circle{% else %}check{% endif %}"></i>
+          <div>
+            <p class="accion-titulo">Valores nulos eliminados</p>
+            <p class="accion-desc">
+              {% if reporte.nulos_eliminados > 0 %}
+                Se eliminaron {{ reporte.nulos_eliminados }} filas con datos inválidos o vacíos.
+              {% else %}
+                No se eliminaron filas por datos faltantes.
+              {% endif %}
+            </p>
+          </div>
+        </div>
+
+        <div class="accion-item {% if reporte.nulos_rellenados > 0 %}accion-info{% else %}accion-ok{% endif %}">
+          <i data-lucide="{% if reporte.nulos_rellenados > 0 %}edit-3{% else %}check{% endif %}"></i>
+          <div>
+            <p class="accion-titulo">Valores nulos rellenados</p>
+            <p class="accion-desc">
+              {% if reporte.nulos_rellenados > 0 %}
+                {{ reporte.nulos_rellenados }} valores nulos rellenados con la mediana del producto correspondiente.
+              {% else %}
+                No se encontraron valores nulos en columnas numéricas.
+              {% endif %}
+            </p>
+          </div>
+        </div>
+
+        <div class="accion-item {% if reporte.nombres_corregidos %}accion-info{% else %}accion-ok{% endif %}">
+          <i data-lucide="{% if reporte.nombres_corregidos %}tag{% else %}check{% endif %}"></i>
+          <div>
+            <p class="accion-titulo">Nombres de productos unificados</p>
+            <p class="accion-desc">
+              {% if reporte.nombres_corregidos %}
+                {{ reporte.nombres_corregidos | length }} nombre(s) similares unificados automáticamente.
+              {% else %}
+                No se encontraron nombres duplicados o similares.
+              {% endif %}
+            </p>
+            {% if reporte.nombres_corregidos %}
+              <div class="correcciones-lista">
+                {% for c in reporte.nombres_corregidos %}
+                  <code>{{ c }}</code>
+                {% endfor %}
+              </div>
+            {% endif %}
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+
+    {# ── OUTLIERS ── #}
+    {% if reporte.outliers %}
+    <div class="reporte-section">
+      <p class="reporte-section-title">
+        <i data-lucide="alert-triangle"></i>
+        Valores anómalos detectados
+        <span class="section-badge warn">{{ reporte.outliers | length }}</span>
+      </p>
+      <p class="reporte-section-desc">Estos valores no fueron eliminados. Revísalos y decide si son correctos o si debes corregirlos en tu archivo original.</p>
+
+      <table class="outliers-table">
+        <thead>
+          <tr>
+            <th>Producto</th>
+            <th>Fecha</th>
+            <th>Cantidad registrada</th>
+            <th>Z-score</th>
+            <th>Nivel</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for o in reporte.outliers %}
+            <tr>
+              <td>{{ o.producto }}</td>
+              <td>{{ o.fecha }}</td>
+              <td>{{ o.cantidad }}</td>
+              <td>{{ o.z_score }}</td>
+              <td>
+                <span class="outlier-nivel {% if o.z_score > 5 %}alto{% else %}medio{% endif %}">
+                  {% if o.z_score > 5 %}Alto{% else %}Medio{% endif %}
+                </span>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+
+
+    {# ── ADVERTENCIAS ── #}
+    {% if reporte.advertencias %}
+    <div class="reporte-section">
+      <p class="reporte-section-title">
+        <i data-lucide="info"></i>
+        Advertencias
+        <span class="section-badge info">{{ reporte.advertencias | length }}</span>
+      </p>
+      <ul class="advertencias-lista">
+        {% for adv in reporte.advertencias %}
+          <li><i data-lucide="chevron-right"></i> {{ adv }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+
+
+    {# ── VISTA PREVIA ── #}
+    {% if preview %}
+    <div class="reporte-section">
+      <p class="reporte-section-title">
+        <i data-lucide="eye"></i>
+        Vista previa — primeras {{ preview | length }} filas limpias
+      </p>
+
+      <div class="preview-table-wrap">
+        <table class="preview-table">
+          <thead>
+            <tr>
+              {% for col in preview[0].keys() %}
+                <th>{{ col }}</th>
+              {% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for fila in preview %}
+              <tr>
+                {% for val in fila.values() %}
+                  <td>{{ val }}</td>
+                {% endfor %}
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
+
+  </div>
+</details>
+
+{% endblock %}

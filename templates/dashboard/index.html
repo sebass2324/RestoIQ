@@ -1,0 +1,241 @@
+{% extends "base.html" %}
+
+{% block titulo %}Dashboard{% endblock %}
+{% block titulo_pagina %}Centro de decisiones{% endblock %}
+{% block subtitulo_pagina %}¿Cómo está mi negocio? · RestoIQ{% endblock %}
+
+{% block estilos %}
+<style>
+  .chart-canvas-wrap { position: relative; height: 200px; }
+</style>
+{% endblock %}
+
+{% block contenido %}
+
+{% if datos.estado == "sin_datos" %}
+
+  <div class="empty-state">
+    <div class="empty-icon">
+      <i data-lucide="file-up"></i>
+    </div>
+    <h2>Sube tu primer archivo de ventas</h2>
+    <p>Carga un CSV o Excel con tu historial de ventas y RestoIQ analizará tu demanda automáticamente.</p>
+    <a href="{{ url_for('upload.index') }}" class="btn-upload">
+      <i data-lucide="upload"></i>
+      Subir CSV / Excel
+    </a>
+  </div>
+
+{% elif datos.estado == "sin_configuracion" %}
+
+  <div class="gate-card">
+    <div class="gate-icon"><i data-lucide="store"></i></div>
+    <div class="gate-text">
+      <h3>Configura tu negocio para ver tu demanda</h3>
+      <p>Ya tienes datos cargados. Cuéntanos cómo opera tu negocio (horizonte, días de operación) para generar tu primera predicción.</p>
+    </div>
+    <a href="{{ url_for('configuracion.index') }}" class="btn-upload">
+      <i data-lucide="settings"></i>
+      Configurar negocio
+    </a>
+  </div>
+
+{% else %}
+
+  <!-- ══ FRANJA SUPERIOR — decisiones inmediatas ══ -->
+  <div class="cards-grid">
+
+    <div class="card">
+      <div class="card-top">
+        <span class="card-label">Producto prioritario</span>
+        <div class="card-icon purple"><i data-lucide="star"></i></div>
+      </div>
+      <p class="card-value">{{ datos.producto_top_nombre }}</p>
+      <p class="card-sub">{{ datos.producto_top_cantidad }} u. en los próximos {{ datos.horizonte_dias }} días</p>
+    </div>
+
+    <div class="card">
+      <div class="card-top">
+        <span class="card-label">Día más exigente</span>
+        <div class="card-icon teal"><i data-lucide="calendar-clock"></i></div>
+      </div>
+      <p class="card-value">{{ datos.dia_pico.fecha }}</p>
+      <p class="card-sub">{{ datos.dia_pico.cantidad }} unidades esperadas ese día</p>
+    </div>
+
+    <div class="card">
+      <div class="card-top">
+        <span class="card-label">Confiabilidad del modelo</span>
+        <div class="card-icon orange"><i data-lucide="shield-check"></i></div>
+      </div>
+      <p class="card-value">{{ datos.confiabilidad_label }}</p>
+      <p class="card-sub">{% if datos.precision_pct is not none %}{{ datos.precision_pct }}% de precisión{% else %}Historial insuficiente{% endif %}</p>
+    </div>
+
+    <div class="card">
+      <div class="card-top">
+        <span class="card-label">Última actualización</span>
+        <div class="card-icon red"><i data-lucide="database"></i></div>
+      </div>
+      <p class="card-value">{{ datos.fecha_ultimo_dato }}</p>
+      <p class="card-sub">Fecha del dato más reciente en tu historial</p>
+    </div>
+
+  </div>
+
+  <!-- ══ FRANJA CENTRAL — qué hacer ══ -->
+  <div class="charts-grid">
+
+    <div class="chart-card">
+      <div class="chart-header">
+        <div>
+          <p class="chart-title">Demanda por día</p>
+          <p class="chart-subtitle">Próximos {{ datos.horizonte_dias }} días · {{ datos.demanda_total_horizonte }} unidades en total</p>
+        </div>
+      </div>
+      <div class="chart-canvas-wrap">
+        <canvas id="chartDemandaDiaria"></canvas>
+      </div>
+    </div>
+
+    <div class="chart-card">
+      <div class="chart-header">
+        <div>
+          <p class="chart-title">Top productos prioritarios</p>
+          <p class="chart-subtitle">Mayor demanda esperada en el horizonte</p>
+        </div>
+      </div>
+      <table class="plan-table">
+        <tbody>
+          {% for item in datos.plan_preparacion[:5] %}
+          <tr>
+            <td><span class="plan-rank">{{ loop.index }}</span>{{ item.producto }}</td>
+            <td class="plan-cantidad">{{ item.cantidad_estimada }} u.</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <a href="{{ url_for('prediccion.index') }}" class="card-link" style="margin-top:.75rem;">→ Ver plan de preparación completo</a>
+    </div>
+
+  </div>
+
+  <!-- ══ FRANJA INFERIOR — resumen de tus 2 modelos de ML ══ -->
+  <p class="section-label">Resumen de tus modelos</p>
+  <div class="summary-grid" style="margin-bottom:1.5rem;">
+
+    <div class="card">
+      <div class="card-top">
+        <span class="card-label">Predicción de demanda</span>
+        <div class="card-icon purple"><i data-lucide="trending-up"></i></div>
+      </div>
+      {% if resumen_prediccion %}
+      <div style="display:flex; gap:2rem; margin-top:.5rem;">
+        <div>
+          <p class="card-value" style="font-size:1.6rem;">{{ "%.2f"|format(resumen_prediccion.nmae) if resumen_prediccion.nmae is not none else "—" }}</p>
+          <p class="card-sub">MAE normalizado</p>
+        </div>
+        <div>
+          <p class="card-value" style="font-size:1.6rem;">{{ "%.2f"|format(resumen_prediccion.r2) if resumen_prediccion.r2 is not none else "—" }}</p>
+          <p class="card-sub">R² (ajuste)</p>
+        </div>
+      </div>
+      {% else %}
+      <p class="card-sub" style="margin-top:.5rem;">Modelo aún no entrenado — visita Predicción de demanda.</p>
+      {% endif %}
+      <a href="{{ url_for('prediccion.index') }}" class="card-link" style="margin-top:.75rem;">→ Ver detalle completo</a>
+    </div>
+
+    <div class="card">
+      <div class="card-top">
+        <span class="card-label">Clasificación (abastecimiento)</span>
+        <div class="card-icon teal"><i data-lucide="star"></i></div>
+      </div>
+      {% if resumen_clasificacion %}
+      <div style="display:flex; gap:2rem; margin-top:.5rem;">
+        <div>
+          <p class="card-value" style="font-size:1.6rem;">{{ "%.1f"|format(resumen_clasificacion.accuracy * 100) if resumen_clasificacion.accuracy is not none else "—" }}{% if resumen_clasificacion.accuracy is not none %}%{% endif %}</p>
+          <p class="card-sub">Accuracy</p>
+        </div>
+        <div>
+          <p class="card-value" style="font-size:1.6rem;">{{ "%.2f"|format(resumen_clasificacion.f1_macro) if resumen_clasificacion.f1_macro is not none else "—" }}</p>
+          <p class="card-sub">F1 score</p>
+        </div>
+      </div>
+      {% else %}
+      <p class="card-sub" style="margin-top:.5rem;">Modelo aún no entrenado — visita Clasificación.</p>
+      {% endif %}
+      <a href="{{ url_for('abastecimiento.index') }}" class="card-link" style="margin-top:.75rem;">→ Ver detalle completo</a>
+    </div>
+
+  </div>
+
+  <p style="margin: 1rem 0 1.5rem;">
+    <a href="{{ url_for('prediccion.index') }}" class="card-link">
+      → Ver detalle completo: gráficos por producto, comparación contra modelo de referencia y más
+    </a>
+  </p>
+
+  <!-- Accesos a otros módulos -->
+  <p class="section-label">Módulos de análisis</p>
+  <div class="ml-grid">
+    <a href="{{ url_for('prediccion.index') }}" class="ml-card">
+      <div class="ml-icon forecast"><i data-lucide="trending-up"></i></div>
+      <div class="ml-info">
+        <p class="ml-title">Predicción de demanda</p>
+        <p class="ml-desc">Explora el detalle completo: por producto, por día, y la confiabilidad del modelo</p>
+      </div>
+      <i data-lucide="chevron-right" class="ml-arrow"></i>
+    </a>
+    <a href="{{ url_for('abastecimiento.index') }}" class="ml-card">
+      <div class="ml-icon classify"><i data-lucide="star"></i></div>
+      <div class="ml-info">
+        <p class="ml-title">Clasificación</p>
+        <p class="ml-desc">Prioridad de abastecimiento: qué productos vigilar hoy</p>
+      </div>
+      <i data-lucide="chevron-right" class="ml-arrow"></i>
+    </a>
+  </div>
+
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+{% if datos.estado == "listo" %}
+<script>
+  const serieTotal = {{ datos.serie_diaria_total | tojson }};
+
+  function formatFechaCorta(str) {
+    const [y, m, d] = str.split("-");
+    const meses = ["", "Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
+    return `${parseInt(d)} ${meses[parseInt(m)]}`;
+  }
+
+  new Chart(document.getElementById("chartDemandaDiaria"), {
+    type: "line",
+    data: {
+      labels: serieTotal.map(d => formatFechaCorta(d.fecha)),
+      datasets: [{
+        label: "Unidades pronosticadas",
+        data: serieTotal.map(d => d.cantidad_total_pred),
+        borderColor: "rgba(83,74,183,1)",
+        backgroundColor: "rgba(83,74,183,.12)",
+        fill: true,
+        tension: 0.3,
+        pointRadius: 2,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { display: false } },
+        y: { grid: { color: "rgba(0,0,0,.05)" } }
+      }
+    }
+  });
+</script>
+{% endif %}
+{% endblock %}

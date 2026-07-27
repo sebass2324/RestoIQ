@@ -1,0 +1,399 @@
+{% extends "base.html" %}
+
+{% block titulo %}Configurar negocio{% endblock %}
+{% block titulo_pagina %}{{ "Configura tu negocio" if es_primera_vez else "Editar configuración" }}{% endblock %}
+{% block subtitulo_pagina %}
+  {% if es_primera_vez %}Antes de tu primera predicción, cuéntanos cómo opera tu negocio{% else %}Ajusta cómo RestoIQ genera tus predicciones{% endif %}
+{% endblock %}
+
+{% block estilos %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+<style>
+  .wizard-progress {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    margin-bottom: 2rem;
+    max-width: 560px;
+  }
+  .wizard-step {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--gray-mid);
+  }
+  .wizard-step .dot {
+    width: 26px; height: 26px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--gray-lt);
+    color: var(--gray-mid);
+    font-size: 0.75rem;
+    flex-shrink: 0;
+  }
+  .wizard-step.done .dot { background: var(--teal); color: white; }
+  .wizard-step.active .dot { background: var(--purple); color: white; }
+  .wizard-step.active { color: var(--dark); }
+  .wizard-line {
+    flex: 1;
+    height: 2px;
+    background: var(--border);
+    margin: 0 10px;
+    min-width: 24px;
+  }
+  .wizard-line.done { background: var(--teal); }
+
+  .config-section {
+    margin-bottom: 2rem;
+  }
+  .config-section-title {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--dark);
+    margin-bottom: 0.25rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .config-section-title i { color: var(--purple); font-size: 1.1rem; }
+  .config-section-desc {
+    font-size: 0.8rem;
+    color: var(--gray-mid);
+    margin-bottom: 0.9rem;
+  }
+
+  .option-cards { display: grid; gap: 0.75rem; }
+  .option-cards.cols-3 { grid-template-columns: repeat(3, 1fr); }
+
+  .option-card {
+    position: relative;
+    border: 1.5px solid var(--border);
+    border-radius: 12px;
+    padding: 1rem 1.1rem;
+    background: var(--white);
+    cursor: pointer;
+    transition: border-color .15s, background .15s;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .option-card:hover { border-color: var(--purple); }
+  .option-card input { position: absolute; opacity: 0; pointer-events: none; }
+  .option-card.selected {
+    border-color: var(--purple);
+    background: var(--purple-lt);
+  }
+  .option-card .oc-icon {
+    width: 36px; height: 36px;
+    border-radius: 9px;
+    background: var(--gray-lt);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--gray-mid);
+    flex-shrink: 0;
+    font-size: 1rem;
+  }
+  .option-card.selected .oc-icon { background: var(--purple); color: white; }
+  .option-card .oc-title { font-size: 0.85rem; font-weight: 600; color: var(--dark); }
+  .option-card .oc-sub { font-size: 0.72rem; color: var(--gray-mid); margin-top: 1px; }
+
+  .option-card.disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+  .option-card.disabled:hover { border-color: var(--border); }
+  .badge-no-detectado {
+    margin-left: auto;
+    font-size: 0.65rem;
+    font-weight: 700;
+    color: var(--gray-mid);
+    background: var(--gray-lt);
+    padding: 3px 8px;
+    border-radius: 99px;
+    white-space: nowrap;
+  }
+
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border: 1.5px solid var(--border);
+    border-radius: 12px;
+    padding: 0.9rem 1.1rem;
+    margin-bottom: 0.65rem;
+  }
+  .toggle-row-info { display: flex; align-items: center; gap: 10px; }
+  .toggle-row-info .oc-icon {
+    width: 36px; height: 36px;
+    border-radius: 9px;
+    background: var(--gray-lt);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--gray-mid);
+    font-size: 1rem;
+    flex-shrink: 0;
+  }
+  .toggle-row.on .oc-icon { background: var(--teal-lt); color: var(--teal); }
+  .toggle-row-title { font-size: 0.85rem; font-weight: 600; color: var(--dark); }
+  .toggle-row-desc { font-size: 0.72rem; color: var(--gray-mid); margin-top: 1px; }
+
+  .switch { position: relative; width: 42px; height: 24px; flex-shrink: 0; }
+  .switch input { opacity: 0; width: 0; height: 0; position: absolute; }
+  .switch .slider {
+    position: absolute; inset: 0;
+    background: var(--border);
+    border-radius: 99px;
+    cursor: pointer;
+    transition: background .15s;
+  }
+  .switch .slider::before {
+    content: "";
+    position: absolute;
+    width: 18px; height: 18px;
+    left: 3px; top: 3px;
+    background: white;
+    border-radius: 50%;
+    transition: transform .15s;
+    box-shadow: 0 1px 3px rgba(0,0,0,.2);
+  }
+  .switch input:checked + .slider { background: var(--purple); }
+  .switch input:checked + .slider::before { transform: translateX(18px); }
+  .switch input:disabled + .slider { opacity: 0.5; cursor: not-allowed; }
+
+  .dias-grid { display: flex; gap: 8px; flex-wrap: wrap; }
+  .dia-chip {
+    width: 48px; height: 48px;
+    border-radius: 12px;
+    border: 1.5px solid var(--border);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.85rem; font-weight: 700;
+    color: var(--gray-mid);
+    cursor: pointer;
+    transition: border-color .15s, background .15s, color .15s;
+  }
+  .dia-chip input { position: absolute; opacity: 0; pointer-events: none; }
+  .dia-chip.selected { background: var(--purple); border-color: var(--purple); color: white; }
+
+  .wizard-submit {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: linear-gradient(135deg, var(--purple), var(--teal));
+    color: white;
+    border: none;
+    border-radius: 10px;
+    padding: 0.85rem 1.75rem;
+    font-family: 'Inter', sans-serif;
+    font-size: 0.9rem;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .wizard-submit:hover { opacity: 0.92; }
+
+  .config-card-wrap {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 1.75rem;
+    max-width: 720px;
+  }
+</style>
+{% endblock %}
+
+{% block contenido %}
+
+<div class="wizard-progress">
+  <div class="wizard-step done"><div class="dot"><i class="bi bi-check-lg"></i></div> Subir</div>
+  <div class="wizard-line done"></div>
+  <div class="wizard-step done"><div class="dot"><i class="bi bi-check-lg"></i></div> Resumen</div>
+  <div class="wizard-line done"></div>
+  <div class="wizard-step active"><div class="dot">3</div> Configurar</div>
+</div>
+
+<div class="config-card-wrap">
+  <form method="POST" id="formConfig">
+
+    <div class="config-section">
+      <p class="config-section-title"><i class="bi bi-calendar-range"></i> Horizonte de predicción</p>
+      <p class="config-section-desc">¿Con cuántos días de anticipación quieres ver la demanda estimada?</p>
+      <div class="option-cards cols-3" data-group="horizonte_dias">
+        {% for valor, label, sub in [(7,"7 días","Corto plazo"), (14,"14 días","Quincenal"), (30,"30 días","Mensual")] %}
+          <label class="option-card {% if (config.horizonte_dias if config else 7) == valor %}selected{% endif %}">
+            <input type="radio" name="horizonte_dias" value="{{ valor }}"
+                   {% if (config.horizonte_dias if config else 7) == valor %}checked{% endif %}>
+            <div class="oc-icon"><i class="bi bi-clock-history"></i></div>
+            <div>
+              <div class="oc-title">{{ label }}</div>
+              <div class="oc-sub">{{ sub }}</div>
+            </div>
+          </label>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="config-section">
+      <p class="config-section-title"><i class="bi bi-shop"></i> Días de operación</p>
+      <p class="config-section-desc">Selecciona los días que tu negocio abre — la predicción no incluirá días cerrados.</p>
+      <div class="dias-grid">
+        {% set dias_activos = (config.dias_operacion_set() if config else [0,1,2,3,4,5,6]) %}
+        {% for valor, label in dias_semana %}
+          <label class="dia-chip {% if valor|int in dias_activos %}selected{% endif %}">
+            <input type="checkbox" name="dias_operacion" value="{{ valor }}"
+                   {% if valor|int in dias_activos %}checked{% endif %}>
+            {{ label }}
+          </label>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="config-section">
+      <p class="config-section-title"><i class="bi bi-sliders"></i> Qué debe considerar el modelo</p>
+      <p class="config-section-desc">Activa solo lo que tu archivo realmente registra — lo demás se deshabilita automáticamente.</p>
+
+      <div class="toggle-row {% if not config or config.considerar_feriados %}on{% endif %}">
+        <div class="toggle-row-info">
+          <div class="oc-icon"><i class="bi bi-calendar-event"></i></div>
+          <div>
+            <div class="toggle-row-title">Feriados de Ecuador</div>
+            <div class="toggle-row-desc">Ya incluidos en RestoIQ, no dependen de tu archivo</div>
+          </div>
+        </div>
+        <label class="switch">
+          <input type="checkbox" name="considerar_feriados"
+                 {% if not config or config.considerar_feriados %}checked{% endif %}>
+          <span class="slider"></span>
+        </label>
+      </div>
+
+      <div class="toggle-row {% if config and config.considerar_promociones %}on{% endif %} {% if not columnas.promocion %}disabled{% endif %}">
+        <div class="toggle-row-info">
+          <div class="oc-icon"><i class="bi bi-tag"></i></div>
+          <div>
+            <div class="toggle-row-title">Promociones</div>
+            <div class="toggle-row-desc">Distingue picos por promoción de la demanda normal</div>
+          </div>
+        </div>
+        {% if columnas.promocion %}
+          <label class="switch">
+            <input type="checkbox" name="considerar_promociones" {% if config and config.considerar_promociones %}checked{% endif %}>
+            <span class="slider"></span>
+          </label>
+        {% else %}
+          <span class="badge-no-detectado">No detectado en tu archivo</span>
+        {% endif %}
+      </div>
+
+      <div class="toggle-row {% if config and config.considerar_descuentos %}on{% endif %} {% if not columnas.descuento %}disabled{% endif %}">
+        <div class="toggle-row-info">
+          <div class="oc-icon"><i class="bi bi-percent"></i></div>
+          <div>
+            <div class="toggle-row-title">Descuentos</div>
+            <div class="toggle-row-desc">Usa el % de descuento registrado como señal del modelo</div>
+          </div>
+        </div>
+        {% if columnas.descuento %}
+          <label class="switch">
+            <input type="checkbox" name="considerar_descuentos" {% if config and config.considerar_descuentos %}checked{% endif %}>
+            <span class="slider"></span>
+          </label>
+        {% else %}
+          <span class="badge-no-detectado">No detectado en tu archivo</span>
+        {% endif %}
+      </div>
+
+      <div class="toggle-row {% if config and config.considerar_eventos %}on{% endif %} {% if not columnas.evento %}disabled{% endif %}">
+        <div class="toggle-row-info">
+          <div class="oc-icon"><i class="bi bi-stars"></i></div>
+          <div>
+            <div class="toggle-row-title">Eventos especiales</div>
+            <div class="toggle-row-desc">Días marcados manualmente como fuera de lo común</div>
+          </div>
+        </div>
+        {% if columnas.evento %}
+          <label class="switch">
+            <input type="checkbox" name="considerar_eventos" {% if config and config.considerar_eventos %}checked{% endif %}>
+            <span class="slider"></span>
+          </label>
+        {% else %}
+          <span class="badge-no-detectado">No detectado en tu archivo</span>
+        {% endif %}
+      </div>
+
+      <div class="toggle-row {% if not config or config.reentrenar_automatico %}on{% endif %}">
+        <div class="toggle-row-info">
+          <div class="oc-icon"><i class="bi bi-arrow-repeat"></i></div>
+          <div>
+            <div class="toggle-row-title">Reentrenar automáticamente</div>
+            <div class="toggle-row-desc">Si subes datos nuevos, el modelo se actualiza solo</div>
+          </div>
+        </div>
+        <label class="switch">
+          <input type="checkbox" name="reentrenar_automatico"
+                 {% if not config or config.reentrenar_automatico %}checked{% endif %}>
+          <span class="slider"></span>
+        </label>
+      </div>
+    </div>
+
+    <div class="config-section">
+      <p class="config-section-title"><i class="bi bi-bullseye"></i> Objetivo de tu análisis</p>
+      <p class="config-section-desc">Personaliza qué vista ves primero en Predicción — puedes cambiarla luego cuando quieras.</p>
+      <div class="option-cards cols-3" data-group="objetivo_analisis">
+        {% set objetivo_actual = (config.objetivo_analisis if config else "ingresos") %}
+        {% for valor, label, sub, icon in [
+          ("inventario","Inventario","Cuánto reabastecer","bi-box-seam"),
+          ("produccion","Producción","Cuánto producir por día","bi-egg-fried"),
+          ("ingresos","Ingresos","Estimar ganancias futuras","bi-cash-coin")
+        ] %}
+          <label class="option-card {% if objetivo_actual == valor %}selected{% endif %}">
+            <input type="radio" name="objetivo_analisis" value="{{ valor }}"
+                   {% if objetivo_actual == valor %}checked{% endif %}>
+            <div class="oc-icon"><i class="bi {{ icon }}"></i></div>
+            <div>
+              <div class="oc-title">{{ label }}</div>
+              <div class="oc-sub">{{ sub }}</div>
+            </div>
+          </label>
+        {% endfor %}
+      </div>
+    </div>
+
+    <button type="submit" class="wizard-submit">
+      {{ "Guardar y ver mi predicción" if es_primera_vez else "Guardar cambios" }}
+      <i class="bi bi-arrow-right"></i>
+    </button>
+
+  </form>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Tarjetas tipo radio (horizonte, objetivo): reflejar selección visual
+  // escuchando el evento 'change' del input real, no manipulando
+  // 'checked' a mano (eso duplicaba el toggle nativo del <label>).
+  document.querySelectorAll(".option-cards").forEach(grupo => {
+    grupo.querySelectorAll(".option-card input").forEach(input => {
+      input.addEventListener("change", () => {
+        grupo.querySelectorAll(".option-card").forEach(c => c.classList.remove("selected"));
+        input.closest(".option-card").classList.add("selected");
+      });
+    });
+  });
+
+  // Chips de días de operación: multi-selección tipo toggle
+  document.querySelectorAll(".dia-chip input[type=checkbox]").forEach(input => {
+    input.addEventListener("change", () => {
+      input.closest(".dia-chip").classList.toggle("selected", input.checked);
+    });
+  });
+
+  // Filas de switch (toggle-row): reflejar estado "on" al cambiar
+  document.querySelectorAll(".toggle-row input[type=checkbox]").forEach(input => {
+    input.addEventListener("change", () => {
+      input.closest(".toggle-row").classList.toggle("on", input.checked);
+    });
+  });
+</script>
+{% endblock %}

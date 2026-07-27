@@ -1,0 +1,1345 @@
+{% extends "base.html" %}
+
+{% block titulo %}Predicción de demanda{% endblock %}
+{% block titulo_pagina %}Predicción de demanda{% endblock %}
+{% block subtitulo_pagina %}Exploración detallada por producto y día · RestoIQ{% endblock %}
+
+{% block estilos %}
+<style>
+  /* Este template fue escrito con nombres de variables que nunca
+     existieron en dashboard.css (--primary, --surface, --bg,
+     --text-*). Se alían aquí a las variables reales del sistema de
+     diseño en vez de reescribir todo el CSS de abajo. */
+  :root {
+    --primary:       var(--purple);
+    --surface:       var(--white);
+    --bg:            var(--gray-lt);
+    --text-primary:  var(--dark);
+    --text-secondary: var(--dark);
+    --text-muted:    var(--gray-mid);
+  }
+
+  /* ── Tabs de objetivo de análisis ── */
+  .tabs-row {
+    display: flex;
+    gap: .5rem;
+    margin-bottom: 1.25rem;
+    flex-wrap: wrap;
+  }
+  .tab-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: .55rem 1.1rem;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text-secondary);
+    font-size: .85rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all .15s;
+  }
+  .tab-btn i { width: 15px; height: 15px; }
+  .tab-btn.active {
+    background: var(--primary);
+    color: #fff;
+    border-color: var(--primary);
+  }
+  .tab-btn:not(.active):hover { border-color: var(--primary); color: var(--primary); }
+
+  .abastecimiento-nota {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    background: #FEF3E8;
+    color: #92400e;
+    font-size: .8rem;
+    padding: .75rem 1rem;
+    border-radius: 10px;
+    margin-bottom: 1rem;
+  }
+  .abastecimiento-nota i { width: 16px; height: 16px; flex-shrink: 0; margin-top: 1px; }
+
+  /* ── Grid principal ── */
+  .pred-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+  }
+  .pred-grid-wide {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+  }
+
+  /* ── Cards de resumen ── */
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.25rem 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: .35rem;
+  }
+  .stat-card .stat-label {
+    font-size: .75rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: .05em;
+  }
+  .stat-card .stat-value {
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    line-height: 1.1;
+  }
+  .stat-card .stat-sub {
+    font-size: .8rem;
+    color: var(--text-muted);
+  }
+  .stat-card .stat-icon {
+    width: 36px; height: 36px;
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    margin-bottom: .5rem;
+  }
+  .icon-green  { background: #d1fae5; color: #059669; }
+  .icon-blue   { background: #dbeafe; color: #2563eb; }
+  .icon-purple { background: #ede9fe; color: #7c3aed; }
+
+  /* ── Panel de control ── */
+  .control-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.25rem 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+  }
+  .control-panel label {
+    font-size: .85rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    white-space: nowrap;
+  }
+  .horizonte-fijo {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: .45rem .9rem;
+    border-radius: 8px;
+    background: var(--bg);
+    color: var(--text-primary);
+    font-size: .85rem;
+    font-weight: 600;
+  }
+  .horizonte-editar {
+    font-size: .78rem;
+    color: var(--primary);
+    text-decoration: none;
+    font-weight: 500;
+  }
+  .horizonte-editar:hover { text-decoration: underline; }
+  .btn-predecir {
+    margin-left: auto;
+    padding: .55rem 1.4rem;
+    background: var(--primary);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-size: .9rem;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    transition: opacity .15s;
+  }
+  .btn-predecir:hover   { opacity: .88; }
+  .btn-predecir:disabled { opacity: .5; cursor: not-allowed; }
+  .btn-reentrenar {
+    padding: .55rem 1rem;
+    background: transparent;
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: .85rem;
+    font-weight: 500;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: .4rem;
+    transition: all .15s;
+  }
+  .btn-reentrenar:hover { border-color: var(--primary); color: var(--primary); }
+
+  /* ── Estrategia badge ── */
+  .estrategia-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+    padding: .25rem .75rem;
+    border-radius: 999px;
+    font-size: .75rem;
+    font-weight: 600;
+  }
+  .badge-lgbm    { background: #dbeafe; color: #1d4ed8; }
+  .badge-movil   { background: #fef3c7; color: #92400e; }
+
+  /* ── Sección card ── */
+  .section-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.25rem 1.5rem;
+  }
+  .section-card h3 {
+    font-size: .95rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+  }
+
+  /* ── Tabla de predicciones ── */
+  .pred-table-wrap { overflow-x: auto; }
+  .pred-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: .85rem;
+  }
+  .pred-table th {
+    background: var(--bg);
+    color: var(--text-muted);
+    font-size: .72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    padding: .6rem 1rem;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  .pred-table td {
+    padding: .65rem 1rem;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-primary);
+    vertical-align: middle;
+  }
+  .pred-table tr:last-child td { border-bottom: none; }
+  .pred-table tr:hover td { background: var(--bg); }
+  .cantidad-bar-wrap {
+    display: flex; align-items: center; gap: .6rem;
+  }
+  .cantidad-bar {
+    height: 6px; border-radius: 3px;
+    background: var(--primary);
+    opacity: .7;
+    min-width: 4px;
+  }
+  .dia-badge {
+    display: inline-block;
+    padding: .15rem .55rem;
+    border-radius: 6px;
+    font-size: .75rem;
+    font-weight: 600;
+  }
+  .dia-finde   { background: #fce7f3; color: #be185d; }
+  .dia-semana  { background: #f0fdf4; color: #166534; }
+  .dia-feriado { background: #fef9c3; color: #854d0e; }
+
+  /* ── Top productos ── */
+  .top-prod-list { display: flex; flex-direction: column; gap: .6rem; }
+  .top-prod-item {
+    display: flex; align-items: center; gap: .75rem;
+  }
+  .top-prod-rank {
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    background: var(--primary);
+    color: #fff;
+    font-size: .7rem;
+    font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .top-prod-name { flex: 1; font-size: .875rem; font-weight: 500; color: var(--text-primary); }
+  .top-prod-cant { font-size: .875rem; font-weight: 700; color: var(--text-primary); }
+  .top-prod-bar-wrap { width: 80px; display: flex; }
+  .top-prod-bar {
+    height: 5px; border-radius: 3px;
+    background: var(--primary); opacity: .6;
+  }
+
+  /* ── Estado vacío / loading ── */
+  .empty-state {
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    padding: 3rem 1rem; gap: .75rem;
+    color: var(--text-muted); text-align: center;
+  }
+  .empty-state i { width: 40px; height: 40px; opacity: .4; }
+  .empty-state p { font-size: .9rem; }
+  .spinner {
+    width: 28px; height: 28px;
+    border: 3px solid var(--border);
+    border-top-color: var(--primary);
+    border-radius: 50%;
+    animation: spin .7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Gráfico ── */
+  .chart-wrap { position: relative; height: 220px; }
+
+  /* ── Calidad del modelo: 2 estados ── */
+  .badge-confiabilidad {
+    display: inline-block;
+    font-size: .72rem;
+    font-weight: 700;
+    padding: .25rem .8rem;
+    border-radius: 999px;
+    letter-spacing: .02em;
+  }
+  .badge-baja { background: #fef3c7; color: #92400e; }
+  .badge-alta { background: #d1fae5; color: #047857; }
+
+  /* Estado A: historial insuficiente */
+  .calidad-insuficiente-card {
+    background: var(--bg);
+    border-radius: 12px;
+    padding: 1.25rem 1.5rem;
+  }
+  .calidad-insuficiente-frase {
+    font-size: .88rem;
+    color: var(--text-primary);
+    margin: .6rem 0 1rem;
+  }
+  .progreso-historial-wrap { margin-bottom: 1rem; }
+  .progreso-historial-bar {
+    height: 8px;
+    background: var(--border);
+    border-radius: 99px;
+    overflow: hidden;
+    margin-bottom: .35rem;
+  }
+  .progreso-historial-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #f59e0b, #92400e);
+    border-radius: 99px;
+    transition: width .3s;
+  }
+  .progreso-historial-texto {
+    font-size: .78rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+  }
+  .calidad-provisional {
+    font-size: .85rem;
+    color: var(--text-primary);
+    background: var(--surface);
+    border: 1px dashed var(--border);
+    border-radius: 8px;
+    padding: .6rem .8rem;
+    margin-bottom: .75rem;
+  }
+  .calidad-provisional strong { font-weight: 700; }
+  .calidad-insuficiente-nota {
+    font-size: .78rem;
+    color: var(--text-muted);
+  }
+
+  /* Estado B: titular protagonista */
+  .calidad-titular {
+    text-align: center;
+    padding: 1.5rem 1rem 1.75rem;
+    background: linear-gradient(135deg, rgba(99,102,241,.06), rgba(5,150,105,.06));
+    border-radius: 12px;
+    margin-bottom: 1.25rem;
+  }
+  .calidad-titular-label {
+    font-size: .85rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin: .7rem 0 .3rem;
+  }
+  .calidad-titular-numero {
+    font-family: 'Playfair Display', serif;
+    font-size: 2.6rem;
+    font-weight: 700;
+    line-height: 1.1;
+    color: #047857;
+  }
+  .calidad-titular-numero.numero-negativo { color: #dc2626; }
+  .calidad-titular-sub {
+    font-size: .8rem;
+    color: var(--text-muted);
+    margin-top: .3rem;
+  }
+
+  /* Estado B: 3 tarjetas secundarias, mismo peso entre sí, menor que el titular */
+  .calidad-secundarios-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1rem;
+  }
+  @media (max-width: 900px) { .calidad-secundarios-grid { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 500px) { .calidad-secundarios-grid { grid-template-columns: 1fr; } }
+  .badge-metrica {
+    display: inline-block;
+    font-size: .72rem;
+    font-weight: 700;
+    padding: .2rem .7rem;
+    border-radius: 99px;
+    margin: .3rem 0 .4rem;
+  }
+  .badge-verde  { background: #d1fae5; color: #047857; }
+  .badge-ambar  { background: #fef3c7; color: #92400e; }
+  .badge-rojo   { background: #fee2e2; color: #b91c1c; }
+
+  .pilar2-grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 1.25rem; }
+  @media (max-width: 900px) { .pilar2-grid { grid-template-columns: 1fr; } }
+  .calidad-secundario {
+    background: var(--bg);
+    border-radius: 10px;
+    padding: 1rem;
+    text-align: center;
+  }
+  .calidad-sec-valor {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #047857;
+  }
+  .calidad-sec-label {
+    font-size: .8rem;
+    color: var(--text-primary);
+    font-weight: 500;
+    margin-top: .2rem;
+  }
+  .calidad-sec-sigla {
+    font-size: .68rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    margin-top: .15rem;
+  }
+
+  .calidad-chart-title {
+    font-size: .85rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: .2rem;
+  }
+  .calidad-chart-sub {
+    font-size: .72rem;
+    color: var(--text-muted);
+    margin-bottom: .75rem;
+  }
+
+  /* ── Pilares (Rendimiento del Modelo, Estado B) ── */
+  .pilar-bloque {
+    display: flex;
+    gap: 1rem;
+    margin-top: 1.75rem;
+    padding-top: 1.75rem;
+    border-top: 1px solid var(--border);
+  }
+  .pilar-numero {
+    flex-shrink: 0;
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    background: var(--primary);
+    color: #fff;
+    font-size: .85rem;
+    font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .pilar-bloque > div { flex: 1; min-width: 0; }
+
+  /* ── Tabla comparativa de los 3 modelos ── */
+  .tabla-comparativa {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: .82rem;
+  }
+  .tabla-comparativa th {
+    text-align: left;
+    font-size: .68rem;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: var(--text-muted);
+    font-weight: 600;
+    padding: 0 .5rem .4rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .tabla-comparativa td {
+    padding: .5rem;
+    border-bottom: 1px solid var(--bg);
+    color: var(--text-primary);
+  }
+  .tabla-comparativa tr:last-child td { border-bottom: none; }
+  .fila-ganadora { background: rgba(5,150,105,.06); }
+  .fila-ganadora td:first-child { font-weight: 700; }
+  .chip-ganador {
+    font-size: .62rem;
+    font-weight: 700;
+    color: #047857;
+    background: #d1fae5;
+    padding: 1px 6px;
+    border-radius: 99px;
+    margin-left: 4px;
+  }
+
+  /* ── Badge de nivel por producto ── */
+  .nivel-badge {
+    font-size: .65rem;
+    font-weight: 700;
+    padding: 1px 7px;
+    border-radius: 99px;
+    letter-spacing: .03em;
+    margin-left: 6px;
+  }
+  .nivel-ALTO  { background: #fee2e2; color: #b91c1c; }
+  .nivel-MEDIO { background: #fef3c7; color: #92400e; }
+  .nivel-BAJO  { background: #dbeafe; color: #1d4ed8; }
+</style>
+{% endblock %}
+
+{% block topbar_acciones %}
+<span id="estrategiaBadge" style="display:none"></span>
+<a href="{{ url_for('upload.index') }}" class="btn-upload">
+  <i data-lucide="upload"></i> Subir datos
+</a>
+{% endblock %}
+
+{% block contenido %}
+
+<!-- ── Pestañas: Demanda / Plan de abastecimiento ──
+     "Ingresos" se eliminó — este sistema no muestra cálculos
+     monetarios como eje principal. "Inventario" se renombró a "Plan
+     de abastecimiento": el cálculo (demanda + margen de seguridad
+     estadístico) es el mismo, pero el nombre ya no sugiere que el
+     sistema gestiona existencias/stock, algo que explícitamente no
+     hace. Si un usuario tenía configurado objetivo_analisis="ingresos"
+     de antes del rediseño, cae a "demanda" por defecto. -->
+{% set modo_inicial = "abastecimiento" if config.objetivo_analisis == "inventario" else "demanda" %}
+<div class="tabs-row" id="tabsRow">
+  <button class="tab-btn {% if modo_inicial == 'demanda' %}active{% endif %}" data-modo="demanda">
+    <i data-lucide="package"></i> Predicción de demanda
+  </button>
+  <button class="tab-btn {% if modo_inicial == 'abastecimiento' %}active{% endif %}" data-modo="abastecimiento">
+    <i data-lucide="boxes"></i> Plan de abastecimiento
+  </button>
+</div>
+
+<!-- ── Panel de control ──
+     El horizonte ya NO se selecciona aquí — es el que el usuario fijó
+     en /configuracion. Cambiarlo se hace ahí, no con un selector
+     duplicado en esta pantalla. -->
+<div class="control-panel">
+  <label><i data-lucide="calendar" style="width:15px;height:15px;vertical-align:middle;margin-right:4px"></i> Horizonte configurado:</label>
+  <span class="horizonte-fijo">{{ config.horizonte_dias }} días</span>
+  <a href="{{ url_for('configuracion.index') }}" class="horizonte-editar">Cambiar en Configuración →</a>
+  <button class="btn-reentrenar" id="btnReentrenar">
+    <i data-lucide="refresh-cw" style="width:14px;height:14px"></i> Reentrenar
+  </button>
+  <button class="btn-predecir" id="btnPredecir">
+    <i data-lucide="rotate-cw" style="width:15px;height:15px"></i> Actualizar predicción
+  </button>
+</div>
+
+<!-- ── Tarjetas principales: accionables, no números sueltos ── -->
+<div class="pred-grid" id="statsGrid">
+
+  <div class="stat-card">
+    <div class="stat-icon icon-blue"><i data-lucide="flame" style="width:18px;height:18px"></i></div>
+    <span class="stat-label">Producto prioritario</span>
+    <span class="stat-value" id="statProductoPrioritario" style="font-size:1.3rem">—</span>
+    <span class="stat-sub" id="statProductoPrioritarioSub">Preparar primero</span>
+  </div>
+
+  <div class="stat-card">
+    <div class="stat-icon icon-purple"><i data-lucide="calendar-clock" style="width:18px;height:18px"></i></div>
+    <span class="stat-label">Día crítico</span>
+    <span class="stat-value" id="statDiaCritico" style="font-size:1.3rem">—</span>
+    <span class="stat-sub" id="statDiaCriticoSub">Mayor demanda esperada</span>
+  </div>
+
+  <div class="stat-card">
+    <div class="stat-icon icon-green"><i data-lucide="shield-check" style="width:18px;height:18px"></i></div>
+    <span class="stat-label">Confiabilidad</span>
+    <span class="stat-value" id="statConfiabilidad" style="font-size:2rem">—</span>
+    <span class="stat-sub" id="statConfiabilidadSub">WAPE — margen de error promedio</span>
+  </div>
+</div>
+
+<!-- Demanda total: información secundaria, no compite con las 3 de arriba -->
+<p style="font-size:.82rem;color:var(--text-muted);margin:-.75rem 0 1.25rem;">
+  Demanda total del período: <strong id="statDemandaTotal" style="color:var(--text-primary)">—</strong> unidades ·
+  <span id="statHorizonteTexto">{{ config.horizonte_dias }} días</span> ·
+  <span id="statEstrategiaTexto"></span>
+</p>
+
+<!-- ── Gráfico + Productos a preparar ── -->
+<div class="pred-grid-wide">
+
+  <div class="section-card">
+    <h3><i data-lucide="bar-chart-2" style="width:16px;height:16px;color:var(--primary)"></i> Demanda diaria estimada</h3>
+    <div class="chart-wrap">
+      <div class="empty-state" id="chartEmpty">
+        <i data-lucide="bar-chart-2"></i>
+        <p>Cargando tu predicción...</p>
+      </div>
+      <canvas id="chartDiario" style="display:none"></canvas>
+    </div>
+    <p style="font-size:.75rem;color:var(--text-muted);margin-top:.5rem;">
+      La línea punteada es el promedio histórico real de ese mismo día de la semana — así sabes si un día se sale de lo normal.
+    </p>
+  </div>
+
+  <div class="section-card">
+    <h3><i data-lucide="clipboard-list" style="width:16px;height:16px;color:var(--primary)"></i> Productos a preparar</h3>
+    <div id="topProductos">
+      <div class="empty-state">
+        <i data-lucide="clipboard-list"></i>
+        <p>Cargando el ranking...</p>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ── Calidad del modelo — 2 estados mutuamente excluyentes,
+     mismo criterio de suficiencia que la tarjeta "Confiabilidad" de
+     arriba (calidad_modelo.holdout presente o no) ── -->
+<div class="section-card" id="calidadModeloCard" style="margin-bottom:1.5rem;">
+  <h3><i data-lucide="microscope" style="width:16px;height:16px;color:var(--primary)"></i> Rendimiento del Modelo</h3>
+
+  <!-- Estado A: historial insuficiente — 1 solo card -->
+  <div id="calidadEstadoA" style="display:none;">
+    <div class="calidad-insuficiente-card">
+      <span class="badge-confiabilidad badge-baja">Confiabilidad baja</span>
+      <p class="calidad-insuficiente-frase" id="txtFraseInsuficiente"></p>
+      <div class="progreso-historial-wrap">
+        <div class="progreso-historial-bar"><div class="progreso-historial-fill" id="progresoHistorialFill"></div></div>
+        <span class="progreso-historial-texto" id="txtProgresoHistorial"></span>
+      </div>
+      <p class="calidad-provisional" id="txtMaeProvisional" style="display:none;"></p>
+      <p class="calidad-insuficiente-nota" id="txtNotaInsuficiente"></p>
+    </div>
+  </div>
+
+  <!-- Estado B: validado con walk-forward — 3 pilares -->
+  <div id="calidadEstadoB" style="display:none;">
+    <div class="calidad-titular">
+      <span class="badge-confiabilidad badge-alta" id="badgeConfiabilidadAlta">Confiabilidad alta</span>
+      <p class="calidad-titular-label" id="txtTitularLabel"></p>
+      <p class="calidad-titular-numero" id="txtTitularNumero"></p>
+      <p class="calidad-titular-sub" id="txtTitularSub"></p>
+    </div>
+
+    <div class="calidad-secundarios-grid">
+      <div class="calidad-secundario">
+        <p class="calidad-sec-label">MAE</p>
+        <p class="calidad-sec-valor" id="valMae">—</p>
+        <span class="badge-metrica" id="badgeMae">—</span>
+        <p class="calidad-sec-sigla">Error promedio absoluto</p>
+        <p class="calidad-sec-sigla" id="valMaeCrudo" style="margin-top:2px;">—</p>
+      </div>
+      <div class="calidad-secundario">
+        <p class="calidad-sec-label">RMSE</p>
+        <p class="calidad-sec-valor" id="valRmse">—</p>
+        <span class="badge-metrica" id="badgeRmse">—</span>
+        <p class="calidad-sec-sigla">Penaliza errores grandes</p>
+        <p class="calidad-sec-sigla" id="valRmseCrudo" style="margin-top:2px;">—</p>
+      </div>
+      <div class="calidad-secundario">
+        <p class="calidad-sec-label">WAPE</p>
+        <p class="calidad-sec-valor" id="valWape">—</p>
+        <span class="badge-metrica" id="badgeWape">—</span>
+        <p class="calidad-sec-sigla">Error % ponderado por volumen</p>
+        <p class="calidad-sec-sigla" id="valWapeCrudo" style="margin-top:2px;">—</p>
+      </div>
+      <div class="calidad-secundario">
+        <p class="calidad-sec-label">R² (coef. determinación)</p>
+        <p class="calidad-sec-valor" id="valR2">—</p>
+        <span class="badge-metrica" id="badgeR2">—</span>
+        <p class="calidad-sec-sigla" id="notaR2">% de variabilidad explicada</p>
+      </div>
+    </div>
+
+    <!-- Pilar 1: comparación contra baseline -->
+    <div class="pilar-bloque">
+      <p class="pilar-numero">1</p>
+      <div>
+        <p class="calidad-chart-title">¿Le gana a las alternativas simples?</p>
+        <p class="calidad-chart-sub">WAPE de los 3 modelos evaluados sobre los mismos datos — el ganador, en verde</p>
+        <div class="chart-wrap" style="height:170px">
+          <canvas id="chartWape"></canvas>
+        </div>
+        <div id="tablaComparativaWrap" style="margin-top:1rem;"></div>
+      </div>
+    </div>
+
+    <!-- Pilar 2: dispersión Real vs. Predicho + distribución de errores -->
+    <div class="pilar-bloque">
+      <p class="pilar-numero">2</p>
+      <div>
+        <p class="calidad-chart-title">¿Qué tan cerca predice de la realidad?</p>
+        <p class="calidad-chart-sub">Cada punto es una predicción real del holdout. Sobre la línea = exacto; encima = sobreestima; debajo = subestima.</p>
+        <div class="chart-wrap" style="height:260px">
+          <canvas id="chartScatter"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Pilar 3: importancia de variables (solo si estrategia = LightGBM) -->
+    <div class="pilar-bloque" id="pilarImportancia" style="display:none;">
+      <p class="pilar-numero">3</p>
+      <div>
+        <p class="calidad-chart-title">¿Por qué el modelo decide lo que decide?</p>
+        <p class="calidad-chart-sub">Las variables que más pesan en cada predicción — transparencia sobre el "por qué", no solo el "cuánto".</p>
+        <div class="chart-wrap" style="height:230px">
+          <canvas id="chartImportancia"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="empty-state" id="calidadCargando"><p>Cargando métricas...</p></div>
+</div>
+
+<!-- ── Vista: Plan de abastecimiento (alternativa al gráfico+tabla) ── -->
+<div class="section-card" id="abastecimientoSection" style="display:none;margin-bottom:1.5rem;">
+  <h3><i data-lucide="boxes" style="width:16px;height:16px;color:var(--primary)"></i> Cantidad total sugerida por producto</h3>
+  <div class="abastecimiento-nota">
+    <i data-lucide="info"></i>
+    Esto es tu demanda estimada para el periodo, con un margen adicional de seguridad estadístico.
+    Úsalo como referencia de cuánto preparar o comprar — se basa solo en tu historial de ventas y
+    la confiabilidad del modelo, no conoce ni reemplaza tu control de existencias.
+  </div>
+  <div id="abastecimientoWrap">
+    <div class="empty-state">
+      <i data-lucide="boxes"></i>
+      <p>Cargando la sugerencia...</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Tabla detallada por producto y día ── -->
+<div class="section-card">
+  <h3>
+    <i data-lucide="table" style="width:16px;height:16px;color:var(--primary)"></i>
+    Detalle por producto y día
+    <span style="margin-left:auto">
+      <button onclick="exportarCSV()" style="background:none;border:1px solid var(--border);border-radius:6px;padding:.25rem .7rem;font-size:.78rem;cursor:pointer;color:var(--text-secondary);display:flex;align-items:center;gap:.35rem">
+        <i data-lucide="download" style="width:13px;height:13px"></i> Exportar CSV
+      </button>
+    </span>
+  </h3>
+  <div id="tablaWrap">
+    <div class="empty-state">
+      <i data-lucide="table"></i>
+      <p>Cargando el detalle...</p>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── Estado global ─────────────────────────────────────────
+// El horizonte ya no es seleccionable en esta pantalla: siempre se
+// usa el configurado por el usuario en /configuracion.
+const diasSeleccionados = {{ config.horizonte_dias if config else 7 }};
+let datosPrediccion   = null;
+let chartInstance     = null;
+let modoActivo        = "{{ modo_inicial }}";
+
+// ── Pestañas: Demanda / Plan de abastecimiento ────────────
+// Cambiar de pestaña NO vuelve a pedir datos al backend — reusa el
+// mismo JSON ya recibido y solo cambia qué se enfatiza/muestra.
+document.querySelectorAll(".tab-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    modoActivo = btn.dataset.modo;
+    aplicarModo();
+    if (datosPrediccion) {
+      renderChart(datosPrediccion.diario);
+      renderTabla(datosPrediccion.por_producto);
+      if (modoActivo === "abastecimiento") renderAbastecimiento(datosPrediccion.por_producto);
+    }
+  });
+});
+
+function aplicarModo() {
+  const esAbastecimiento = modoActivo === "abastecimiento";
+  document.querySelector(".pred-grid-wide").style.display = esAbastecimiento ? "none" : "grid";
+  document.getElementById("abastecimientoSection").style.display = esAbastecimiento ? "block" : "none";
+}
+aplicarModo();
+
+// ── Cargar predicción (automático al entrar, y también manual) ──
+async function cargarPrediccion() {
+  const btn = document.getElementById("btnPredecir");
+  btn.disabled = true;
+  btn.innerHTML = `<div class="spinner" style="width:16px;height:16px;border-width:2px"></div> Calculando...`;
+
+  try {
+    const res  = await fetch("/prediccion/ejecutar", {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({ dias: diasSeleccionados }),
+    });
+    const data = await res.json();
+
+    if (!data.ok) {
+      alert("Error: " + data.error);
+      return;
+    }
+
+    datosPrediccion = data;
+    renderTodo(data);
+
+  } catch (e) {
+    alert("Error de conexión: " + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = `<i data-lucide="rotate-cw" style="width:15px;height:15px"></i> Actualizar predicción`;
+    lucide.createIcons();
+  }
+}
+
+document.getElementById("btnPredecir").addEventListener("click", cargarPrediccion);
+document.addEventListener("DOMContentLoaded", cargarPrediccion);
+// Por si el script corre después de DOMContentLoaded (defer/scripts al final del body)
+if (document.readyState !== "loading") cargarPrediccion();
+
+// ── Botón reentrenar ──────────────────────────────────────
+document.getElementById("btnReentrenar").addEventListener("click", async () => {
+  if (!confirm("¿Reentrenar el modelo con los datos actuales?")) return;
+  const btn = document.getElementById("btnReentrenar");
+  btn.disabled = true;
+  btn.innerHTML = `<div class="spinner" style="width:13px;height:13px;border-width:2px"></div> Entrenando...`;
+
+  try {
+    const res  = await fetch("/prediccion/reentrenar", { method: "POST" });
+    const data = await res.json();
+    if (data.ok) {
+      alert(`✅ Modelo reentrenado\nMAE: ${data.metricas.mae} unidades\nMAPE: ${data.metricas.mape}%`);
+      cargarPrediccion();
+    } else {
+      alert("Error: " + data.error);
+    }
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = `<i data-lucide="refresh-cw" style="width:14px;height:14px"></i> Reentrenar`;
+    lucide.createIcons();
+  }
+});
+
+// ── Render principal ──────────────────────────────────────
+function renderTodo(data) {
+  aplicarModo();
+  renderBadge(data.estrategia);
+  renderStats(data);
+  renderChart(data.diario);
+  renderTopProductos(data.resumen.top_5_productos, data.niveles_producto);
+  renderCalidadModelo(data.calidad_modelo);
+  renderTabla(data.por_producto);
+  if (modoActivo === "abastecimiento") renderAbastecimiento(data.por_producto);
+  lucide.createIcons();
+  renderImportancia(data.calidad_modelo);
+}
+
+let chartImportanciaInstance = null;
+function renderImportancia(calidad) {
+  const pilar = document.getElementById("pilarImportancia");
+  const importancias = calidad && calidad.importancias;
+
+  // Solo existe si la estrategia es LightGBM — Promedio Móvil no
+  // tiene concepto de "importancia de features". Ya viene calculado
+  // desde el entrenamiento, así que no hay ningún fetch adicional
+  // aquí: se dibuja directo con lo que ya llegó en /prediccion/ejecutar.
+  if (!importancias || Object.keys(importancias).length === 0) {
+    pilar.style.display = "none";
+    return;
+  }
+  pilar.style.display = "flex";
+
+  const canvas = document.getElementById("chartImportancia");
+  if (chartImportanciaInstance) chartImportanciaInstance.destroy();
+
+  const nombres = Object.keys(importancias).reverse();
+  const valores = Object.values(importancias).reverse();
+
+  chartImportanciaInstance = new Chart(canvas, {
+    type: "bar",
+    data: {
+      labels: nombres,
+      datasets: [{
+        label: "Importancia",
+        data: valores,
+        backgroundColor: "rgba(99,102,241,.75)",
+        borderRadius: 4,
+      }]
+    },
+    options: {
+      indexAxis: "y",
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { color: "rgba(0,0,0,.05)" }, title: { display: true, text: "Ganancia acumulada en el modelo", font: { size: 10 } } },
+        y: { grid: { display: false }, ticks: { font: { family: "Courier New", size: 11 } } }
+      }
+    }
+  });
+}
+
+function renderBadge(estrategia) {
+  const badge = document.getElementById("estrategiaBadge");
+  const esLGBM = estrategia === "lgbm";
+  badge.style.display = "inline-flex";
+  badge.className = `estrategia-badge ${esLGBM ? "badge-lgbm" : "badge-movil"}`;
+  badge.innerHTML = `<i data-lucide="${esLGBM ? "cpu" : "activity"}" style="width:12px;height:12px"></i>
+    ${esLGBM ? "LightGBM" : "Promedio móvil"}`;
+}
+
+function renderStats(data) {
+  const resumen = data.resumen;
+  const critico  = data.dia_critico;
+
+  // Producto prioritario: el primero del ranking top_5_productos
+  const [prodTop, cantTop] = Object.entries(resumen.top_5_productos)[0] || ["—", 0];
+  document.getElementById("statProductoPrioritario").textContent = prodTop;
+  document.getElementById("statProductoPrioritarioSub").textContent =
+    `${cantTop.toLocaleString()} unidades · Preparar primero`;
+
+  // Día crítico: fecha + % sobre el promedio histórico de ese día de semana
+  document.getElementById("statDiaCritico").textContent = formatFecha(critico.fecha);
+  document.getElementById("statDiaCriticoSub").textContent =
+    critico.pct_sobre_promedio !== null && critico.pct_sobre_promedio !== undefined
+      ? `${critico.pct_sobre_promedio > 0 ? "+" : ""}${critico.pct_sobre_promedio}% sobre lo normal ese día`
+      : "Mayor demanda esperada";
+
+  // Confiabilidad: WAPE como KPI grande (más robusto que MAPE ante
+  // productos de baja demanda — ver Módulo de Calidad del modelo).
+  // Criterio de suficiencia ÚNICO en toda la página: la presencia de
+  // calidad_modelo.holdout (walk-forward validado). No se usa ningún
+  // otro criterio en ningún otro lugar — ver renderCalidadModelo.
+const validado = data.calidad_modelo && data.calidad_modelo.holdout;
+if (validado) {
+  const wape = data.calidad_modelo.wape;          // viene en % (ej. 20)
+  const wapeNorm = wape / 100;                     // normalizado 0-1 (ej. 0.20)
+  document.getElementById("statConfiabilidad").textContent = wapeNorm.toFixed(2);
+  const label = wape <= 10 ? "Error bajo" : wape <= 25 ? "Error moderado" : "Error alto";
+  document.getElementById("statConfiabilidadSub").textContent = `WAPE — ${label}`;
+} else {
+  document.getElementById("statConfiabilidad").textContent = "—";
+  document.getElementById("statConfiabilidadSub").textContent = "Historial insuficiente todavía";
+}
+  // Demanda total: secundaria, debajo de las tarjetas
+  document.getElementById("statDemandaTotal").textContent = resumen.cantidad_total_pred.toLocaleString("es-EC");
+  document.getElementById("statEstrategiaTexto").textContent =
+    "Modelo: " + (resumen.estrategia === "lgbm" ? "LightGBM" : "Promedio móvil");
+}
+
+function renderChart(diario) {
+  document.getElementById("chartEmpty").style.display = "none";
+  const canvas = document.getElementById("chartDiario");
+  canvas.style.display = "block";
+
+  if (chartInstance) chartInstance.destroy();
+
+  const labels     = diario.map(d => formatFecha(d.fecha));
+  const valores    = diario.map(d => d.cantidad_total_pred);
+  const promedios  = diario.map(d => d.promedio_historico);
+
+  chartInstance = new Chart(canvas, {
+    data: {
+      labels,
+      datasets: [
+        {
+          type: "bar",
+          label: "Predicción",
+          data:  valores,
+          backgroundColor: "rgba(99,102,241,.75)",
+          borderRadius: 6,
+          borderSkipped: false,
+          order: 2,
+        },
+        {
+          type: "line",
+          label: "Promedio histórico (mismo día de semana)",
+          data:  promedios,
+          borderColor: "rgba(220,38,38,.75)",
+          borderDash: [5, 4],
+          borderWidth: 2,
+          pointRadius: 0,
+          fill: false,
+          tension: 0.2,
+          order: 1,
+        },
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: true, position: "bottom", labels: { boxWidth: 10, font: { size: 10 } } } },
+      scales: {
+        x: { grid: { display: false } },
+        y: { grid: { color: "rgba(0,0,0,.05)" } }
+      }
+    }
+  });
+}
+
+function renderTopProductos(top, niveles) {
+  niveles = niveles || {};
+  const max     = Math.max(...Object.values(top));
+  const wrap    = document.getElementById("topProductos");
+  wrap.innerHTML = `<div class="top-prod-list">` +
+    Object.entries(top).map(([prod, cant], i) => {
+      const nivel = (niveles[prod] || {}).nivel || "MEDIO";
+      return `
+      <div class="top-prod-item">
+        <div class="top-prod-rank">${i + 1}</div>
+        <span class="top-prod-name">${prod}<span class="nivel-badge nivel-${nivel}">${nivel}</span></span>
+        <div class="top-prod-bar-wrap">
+          <div class="top-prod-bar" style="width:${Math.round((cant/max)*100)}%"></div>
+        </div>
+        <span class="top-prod-cant">${cant.toLocaleString()}</span>
+      </div>`;
+    }).join("") + `</div>`;
+}
+
+function renderCalidadModelo(calidad) {
+  document.getElementById("calidadCargando").style.display = "none";
+  const elA = document.getElementById("calidadEstadoA");
+  const elB = document.getElementById("calidadEstadoB");
+
+  // Criterio de suficiencia ÚNICO: presencia de calidad.holdout
+  // (walk-forward validado). El mismo criterio que usa la tarjeta
+  // "Confiabilidad" de arriba — ver renderStats.
+  const validado = calidad && calidad.holdout;
+
+  if (!validado) {
+    elB.style.display = "none";
+    elA.style.display = "block";
+    renderEstadoA(calidad || {});
+    return;
+  }
+
+  elA.style.display = "none";
+  elB.style.display = "block";
+  renderEstadoB(calidad);
+}
+
+function renderEstadoA(calidad) {
+  const dias   = calidad.dias_historial ?? 0;
+  const umbral = calidad.umbral_dias_ml ?? 90;
+  const pct    = Math.min(100, Math.round((dias / umbral) * 100));
+
+  document.getElementById("txtFraseInsuficiente").textContent =
+    `Todavía no hay suficiente historial para validar qué tan confiable es el modelo.`;
+
+  document.getElementById("progresoHistorialFill").style.width = pct + "%";
+  document.getElementById("txtProgresoHistorial").textContent =
+    `Historial disponible: ${dias} / ${umbral} días`;
+
+  const maeProv = calidad.mae_provisional;
+  const elProv  = document.getElementById("txtMaeProvisional");
+  if (maeProv !== null && maeProv !== undefined) {
+    elProv.style.display = "block";
+    elProv.innerHTML = `<strong>Error observado hasta ahora (provisional):</strong> ± ${maeProv} unidades (MAE)`;
+  } else {
+    elProv.style.display = "none";
+  }
+
+  document.getElementById("txtNotaInsuficiente").textContent =
+    `RMSE, WAPE y comparación con otros modelos se activan al llegar a ${umbral} días de historial.`;
+}
+
+function renderEstadoB(calidad) {
+  const h = calidad.holdout;
+
+  // Titular protagonista: RestoIQ vs. Regresión Lineal — el benchmark
+  // REAL y más exigente de los 2 (no el naive, que es el piso mínimo).
+  // Antes comparaba contra el naive diciendo "el mejor punto de
+  // referencia", una contradicción: presumía vencer "al mejor rival"
+  // comparando contra el más fácil de vencer. La comparación contra
+  // el naive sigue disponible, ahora en la tabla de abajo.
+  const mejora = h.mejora_pct;
+  const negativo = mejora !== null && mejora !== undefined && mejora < 0;
+  const nombreBaseline = h.baseline_nombre || "Regresión Lineal";
+  document.getElementById("txtTitularLabel").textContent =
+    `RestoIQ frente a ${nombreBaseline}`;
+  document.getElementById("txtTitularNumero").textContent =
+    mejora !== null && mejora !== undefined ? `${mejora > 0 ? "+" : ""}${mejora}%` : "—";
+  document.getElementById("txtTitularNumero").className =
+    "calidad-titular-numero" + (negativo ? " numero-negativo" : "");
+  document.getElementById("txtTitularSub").textContent =
+    (negativo ? "más error" : "menos error") + ` que ${nombreBaseline} — el modelo de referencia más exigente de los 2, medido en WAPE`;
+
+  const badge = document.getElementById("badgeConfiabilidadAlta");
+  badge.textContent = `Confiabilidad alta — validado con ${h.dias_evaluados ?? "—"} días de historial`;
+
+  // 4 tarjetas: MAE, RMSE, WAPE, R² — cada una con badge cualitativo.
+  // Umbrales sobre la versión normalizada (0-1) de cada métrica, pero
+  // el número que se muestra es el crudo (en unidades/%) — el badge
+  // es la traducción a "bueno/regular/malo" sin sobrecargar la vista
+  // con el número normalizado.
+  function badgeError(valorNorm) {
+    if (valorNorm === null || valorNorm === undefined) return ["—", ""];
+    if (valorNorm < 0.10) return ["Muy bajo", "badge-verde"];
+    if (valorNorm < 0.20) return ["Bajo", "badge-verde"];
+    if (valorNorm < 0.35) return ["Moderado", "badge-ambar"];
+    return ["Alto", "badge-rojo"];
+  }
+  function badgeR2(r2) {
+    if (r2 === null || r2 === undefined) return ["—", ""];
+    if (r2 >= 0.85) return ["Excelente ajuste", "badge-verde"];
+    if (r2 >= 0.70) return ["Buen ajuste", "badge-verde"];
+    if (r2 >= 0.50) return ["Ajuste moderado", "badge-ambar"];
+    return ["Ajuste bajo", "badge-rojo"];
+  }
+
+  document.getElementById("valMae").textContent = calidad.nmae !== null && calidad.nmae !== undefined ? calidad.nmae.toFixed(3) : "—";
+  document.getElementById("valMaeCrudo").textContent = `(${calidad.mae} unidades)`;
+  const [bMaeTxt, bMaeCls] = badgeError(calidad.nmae);
+  document.getElementById("badgeMae").textContent = bMaeTxt;
+  document.getElementById("badgeMae").className = "badge-metrica " + bMaeCls;
+
+  document.getElementById("valRmse").textContent = calidad.nrmse !== null && calidad.nrmse !== undefined ? calidad.nrmse.toFixed(3) : "—";
+  document.getElementById("valRmseCrudo").textContent = `(${calidad.rmse} unidades)`;
+  const [bRmseTxt, bRmseCls] = badgeError(calidad.nrmse);
+  document.getElementById("badgeRmse").textContent = bRmseTxt;
+  document.getElementById("badgeRmse").className = "badge-metrica " + bRmseCls;
+
+  document.getElementById("valWape").textContent = (calidad.wape / 100).toFixed(3);
+  document.getElementById("valWapeCrudo").textContent = `(${calidad.wape}%)`;
+  const [bWapeTxt, bWapeCls] = badgeError(calidad.wape / 100);
+  document.getElementById("badgeWape").textContent = bWapeTxt;
+  document.getElementById("badgeWape").className = "badge-metrica " + bWapeCls;
+
+  const r2 = h.r2_restoiq;
+  document.getElementById("valR2").textContent = r2 !== null && r2 !== undefined ? r2 : "—";
+  const [bR2Txt, bR2Cls] = badgeR2(r2);
+  document.getElementById("badgeR2").textContent = bR2Txt;
+  document.getElementById("badgeR2").className = "badge-metrica " + bR2Cls;
+  document.getElementById("notaR2").textContent =
+    r2 !== null && r2 !== undefined ? `${(r2 * 100).toFixed(1)}% de variabilidad explicada` : "% de variabilidad explicada";
+
+  renderChartWape(h);
+  renderTablaComparativa(h);
+  renderChartScatter(h);
+}
+
+function renderTablaComparativa(h) {
+  const modelos = [
+    { nombre: h.naive_nombre || "Naive estacional", mae: h.nmae_naive, rmse: h.nrmse_naive, wape: h.wape_naive / 100, r2: h.r2_naive },
+    { nombre: h.baseline_nombre || "Regresión Lineal", mae: h.nmae_baseline, rmse: h.nrmse_baseline, wape: h.wape_baseline / 100, r2: h.r2_baseline },
+    { nombre: "RestoIQ", mae: h.nmae_restoiq, rmse: h.nrmse_restoiq, wape: h.wape_restoiq / 100, r2: h.r2_restoiq },
+  ];
+  const wrap = document.getElementById("tablaComparativaWrap");
+  const f = v => v ?? v === 0 ? Number(v).toFixed(3) : "—";
+  wrap.innerHTML = `
+    <table class="tabla-comparativa">
+      <thead>
+        <tr><th>Modelo</th><th>MAE</th><th>RMSE</th><th>WAPE</th><th>R²</th></tr>
+      </thead>
+      <tbody>
+        ${modelos.map(m => `
+          <tr class="${m.nombre === h.modelo_ganador ? "fila-ganadora" : ""}">
+            <td>${m.nombre}${m.nombre === h.modelo_ganador ? ' <span class="chip-ganador">ganador</span>' : ""}</td>
+            <td>${f(m.mae)}</td>
+            <td>${f(m.rmse)}</td>
+            <td>${f(m.wape)}</td>
+            <td>${f(m.r2)}</td>
+          </tr>`).join("")}
+      </tbody>
+    </table>`;
+}
+
+let chartWapeInstance = null;
+function renderChartWape(h) {
+  const canvas = document.getElementById("chartWape");
+  if (chartWapeInstance) chartWapeInstance.destroy();
+
+  const labels = [h.naive_nombre || "Naive estacional", h.baseline_nombre || "Regresión Lineal", "RestoIQ"];
+  const valores = [h.wape_naive, h.wape_baseline, h.wape_restoiq];
+  const colores = labels.map(l => l === h.modelo_ganador
+    ? "rgba(5,150,105,.85)"
+    : "rgba(153,153,153,.5)");
+
+  chartWapeInstance = new Chart(canvas, {
+    type: "bar",
+    data: {
+      labels,
+      datasets: [{
+        label: "WAPE",
+        data: valores,
+        backgroundColor: colores,
+        borderRadius: 5,
+      }]
+    },
+    options: {
+      indexAxis: "y",
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { color: "rgba(0,0,0,.05)" }, ticks: { callback: v => v + "%" } },
+        y: { grid: { display: false } }
+      }
+    }
+  });
+}
+
+let chartScatterInstance = null;
+function renderChartScatter(h) {
+  const canvas = document.getElementById("chartScatter");
+  if (!h.scatter || !h.scatter.length) return;
+  if (chartScatterInstance) chartScatterInstance.destroy();
+
+  const puntos = h.scatter.map(p => ({ x: p.real, y: p.predicho }));
+  const maxVal = Math.max(...h.scatter.map(p => Math.max(p.real, p.predicho))) * 1.05;
+
+  chartScatterInstance = new Chart(canvas, {
+    data: {
+      datasets: [
+        {
+          type: "scatter",
+          label: h.modelo_ganador || "RestoIQ",
+          data: puntos,
+          backgroundColor: "rgba(99,102,241,.55)",
+          pointRadius: 3,
+        },
+        {
+          type: "line",
+          label: "Predicción exacta (y = x)",
+          data: [{ x: 0, y: 0 }, { x: maxVal, y: maxVal }],
+          borderColor: "rgba(220,38,38,.7)",
+          borderDash: [6, 4],
+          borderWidth: 1.5,
+          pointRadius: 0,
+          fill: false,
+        },
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: true, position: "bottom", labels: { boxWidth: 10, font: { size: 10 } } } },
+      scales: {
+        x: { title: { display: true, text: "Real (unidades)", font: { size: 10 } }, grid: { color: "rgba(0,0,0,.05)" } },
+        y: { title: { display: true, text: "Predicho (unidades)", font: { size: 10 } }, grid: { color: "rgba(0,0,0,.05)" } }
+      }
+    }
+  });
+}
+
+
+function renderTabla(porProducto) {
+  const maxCant = Math.max(...porProducto.map(r => r.cantidad_pred));
+  const wrap    = document.getElementById("tablaWrap");
+
+  wrap.innerHTML = `
+    <div class="pred-table-wrap">
+      <table class="pred-table">
+        <thead>
+          <tr>
+            <th>Fecha</th>
+            <th>Día</th>
+            <th>Producto</th>
+            <th>Cantidad estimada</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${porProducto.map(r => {
+            const fecha  = new Date(r.fecha + "T00:00:00");
+            const dia    = fecha.getDay(); // 0=Dom,6=Sáb
+            const esFinde   = dia === 0 || dia === 6;
+            const nombreDia = ["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"][dia];
+            const pct       = Math.round((r.cantidad_pred / maxCant) * 100);
+            return `
+              <tr>
+                <td>${r.fecha}</td>
+                <td>
+                  <span class="dia-badge ${esFinde ? "dia-finde" : "dia-semana"}">
+                    ${nombreDia}
+                  </span>
+                </td>
+                <td>${r.producto}</td>
+                <td>
+                  <div class="cantidad-bar-wrap">
+                    <div class="cantidad-bar" style="width:${Math.max(pct, 4)}px"></div>
+                    ${r.cantidad_pred.toLocaleString()}
+                  </div>
+                </td>
+              </tr>`;
+          }).join("")}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+function renderAbastecimiento(porProducto) {
+  const totales = {};
+  porProducto.forEach(r => {
+    totales[r.producto] = (totales[r.producto] || 0) + r.cantidad_pred;
+  });
+  const ordenado = Object.entries(totales).sort((a, b) => b[1] - a[1]);
+  const max = Math.max(...ordenado.map(([, cant]) => cant));
+  const wrap = document.getElementById("abastecimientoWrap");
+
+  wrap.innerHTML = `<div class="top-prod-list">` +
+    ordenado.map(([prod, cant], i) => `
+      <div class="top-prod-item">
+        <div class="top-prod-rank">${i + 1}</div>
+        <span class="top-prod-name">${prod}</span>
+        <div class="top-prod-bar-wrap">
+          <div class="top-prod-bar" style="width:${Math.round((cant / max) * 100)}%"></div>
+        </div>
+        <span class="top-prod-cant">${Math.round(cant).toLocaleString()} u.</span>
+      </div>`
+    ).join("") + `</div>`;
+  lucide.createIcons();
+}
+
+// ── Exportar CSV ──────────────────────────────────────────
+function exportarCSV() {
+  if (!datosPrediccion) return;
+  const rows   = datosPrediccion.por_producto;
+  const header = "fecha,producto,cantidad_pred";
+  const lines  = rows.map(r => `${r.fecha},${r.producto},${r.cantidad_pred}`);
+  const blob = new Blob([[header, ...lines].join("\n")], { type: "text/csv" });
+  const url  = URL.createObjectURL(blob);
+  const a    = Object.assign(document.createElement("a"), {
+    href: url, download: "prediccion_demanda.csv"
+  });
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ── Helper fecha ──────────────────────────────────────────
+function formatFecha(str) {
+  if (!str) return "—";
+  const [y, m, d] = str.split("-");
+  const meses = ["","Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+  return `${parseInt(d)} ${meses[parseInt(m)]}`;
+}
+</script>
+{% endblock %}

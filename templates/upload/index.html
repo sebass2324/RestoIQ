@@ -1,0 +1,209 @@
+{% extends "base.html" %}
+{% block estilos %}
+<link rel="stylesheet"
+      href="{{ url_for('static', filename='css/upload.css') }}">
+{% endblock %}
+
+{% block titulo %}Subir datos{% endblock %}
+{% block titulo_pagina %}Subir datos{% endblock %}
+{% block subtitulo_pagina %}Carga tu archivo CSV o Excel de ventas{% endblock %}
+
+{% block topbar_acciones %}{% endblock %}
+
+{% block contenido %}
+
+<div class="upload-layout">
+
+  <!-- ── ZONA DE CARGA ── -->
+  <div class="upload-card">
+
+    <form method="POST" enctype="multipart/form-data" id="uploadForm">
+
+      <!-- Zona drag & drop -->
+      <div class="upload-zone" id="uploadZone">
+        <div class="upload-zone-icon">
+          <i data-lucide="file-up"></i>
+        </div>
+        <p class="upload-zone-title">Arrastra tu archivo aquí</p>
+        <p class="upload-zone-sub">o haz clic para seleccionarlo</p>
+        <input type="file" name="archivo" id="archivoInput" accept=".csv,.xlsx,.xls" hidden />
+        <p class="upload-zone-formats">CSV &nbsp;·&nbsp; Excel .xlsx &nbsp;·&nbsp; Excel .xls</p>
+      </div>
+
+      <!-- Preview del archivo seleccionado -->
+      <div class="upload-preview" id="uploadPreview" style="display:none;">
+        <div class="upload-preview-icon">
+          <i data-lucide="file-check"></i>
+        </div>
+        <div class="upload-preview-info">
+          <p class="upload-preview-name" id="uploadFileName">archivo.csv</p>
+          <p class="upload-preview-size" id="uploadFileSize">0 KB</p>
+        </div>
+        <button type="button" id="uploadClear" class="upload-clear" title="Quitar archivo">
+          <i data-lucide="x"></i>
+        </button>
+      </div>
+
+      <!-- Barra de progreso (visible al enviar) -->
+      <div class="upload-progress" id="uploadProgress" style="display:none;">
+        <div class="upload-progress-bar" id="uploadProgressBar"></div>
+      </div>
+
+      <button type="submit" class="btn-submit" id="btnSubmit" disabled>
+        <i data-lucide="upload"></i>
+        Subir y analizar archivo
+      </button>
+
+    </form>
+
+  </div>
+
+  <!-- ── INSTRUCCIONES ── -->
+  <div class="upload-help-card">
+
+    <div class="help-section">
+      <p class="help-title">
+        <i data-lucide="table-2"></i>
+        Columnas requeridas
+      </p>
+      <p class="help-desc">Tu archivo debe tener al menos estas tres columnas (el nombre puede variar, el sistema las detecta automáticamente):</p>
+      <div class="help-tags required">
+        <span class="help-tag">fecha</span>
+        <span class="help-tag">producto</span>
+        <span class="help-tag">cantidad</span>
+      </div>
+    </div>
+
+    <div class="help-section">
+      <p class="help-title">
+        <i data-lucide="plus-circle"></i>
+        Columnas opcionales (enriquecen el análisis)
+      </p>
+      <div class="help-tags optional">
+        <span class="help-tag">precio</span>
+        <span class="help-tag">total</span>
+        <span class="help-tag">categoria</span>
+        <span class="help-tag">cliente</span>
+        <span class="help-tag">vendedor</span>
+      </div>
+    </div>
+
+    <div class="help-section">
+      <p class="help-title">
+        <i data-lucide="calendar"></i>
+        Formatos de fecha aceptados
+      </p>
+      <div class="help-date-list">
+        <code>2024-03-15</code>
+        <code>15/03/2024</code>
+        <code>03/15/2024</code>
+        <code>15-03-2024</code>
+        <code>15.03.2024</code>
+      </div>
+    </div>
+
+    <div class="help-section">
+      <p class="help-title">
+        <i data-lucide="info"></i>
+        ¿Qué hace el sistema con tu archivo?
+      </p>
+      <ul class="help-list">
+        <li><i data-lucide="check"></i> Detecta y elimina filas duplicadas</li>
+        <li><i data-lucide="check"></i> Corrige formatos de fecha automáticamente</li>
+        <li><i data-lucide="check"></i> Unifica nombres de productos similares</li>
+        <li><i data-lucide="check"></i> Rellena valores nulos con la mediana</li>
+        <li><i data-lucide="check"></i> Detecta cantidades anómalas (outliers)</li>
+        <li><i data-lucide="check"></i> Calcula el total si no existe (cantidad × precio)</li>
+      </ul>
+    </div>
+
+    <a href="#" class="help-download">
+      <i data-lucide="download"></i>
+      Descargar archivo de ejemplo (.csv)
+    </a>
+
+  </div>
+
+</div>
+
+{% endblock %}
+
+
+{% block scripts %}
+<script>
+  const zone     = document.getElementById("uploadZone");
+  const input    = document.getElementById("archivoInput");
+  const preview  = document.getElementById("uploadPreview");
+  const fname    = document.getElementById("uploadFileName");
+  const fsize    = document.getElementById("uploadFileSize");
+  const clearBtn = document.getElementById("uploadClear");
+  const submitBtn= document.getElementById("btnSubmit");
+  const progress = document.getElementById("uploadProgress");
+  const progressBar = document.getElementById("uploadProgressBar");
+  const form     = document.getElementById("uploadForm");
+
+  // Clic en zona → abrir selector
+  zone.addEventListener("click", () => input.click());
+
+  // Archivo seleccionado con el selector
+  input.addEventListener("change", () => {
+    if (input.files.length > 0) mostrarPreview(input.files[0]);
+  });
+
+  // Drag & drop
+  zone.addEventListener("dragover", e => {
+    e.preventDefault();
+    zone.classList.add("dragover");
+  });
+  zone.addEventListener("dragleave", () => zone.classList.remove("dragover"));
+  zone.addEventListener("drop", e => {
+    e.preventDefault();
+    zone.classList.remove("dragover");
+    const file = e.dataTransfer.files[0];
+    if (file) {
+      const dt = new DataTransfer();
+      dt.items.add(file);
+      input.files = dt.files;
+      mostrarPreview(file);
+    }
+  });
+
+  // Quitar archivo
+  clearBtn.addEventListener("click", () => {
+    input.value = "";
+    preview.style.display  = "none";
+    zone.style.display     = "flex";
+    submitBtn.disabled     = true;
+    lucide.createIcons();
+  });
+
+  // Al enviar → mostrar barra de progreso animada
+  form.addEventListener("submit", () => {
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<i data-lucide="loader"></i> Procesando...';
+    progress.style.display = "block";
+    let pct = 0;
+    const iv = setInterval(() => {
+      pct = Math.min(pct + Math.random() * 15, 90);
+      progressBar.style.width = pct + "%";
+      if (pct >= 90) clearInterval(iv);
+    }, 300);
+    lucide.createIcons();
+  });
+
+  function mostrarPreview(file) {
+    fname.textContent = file.name;
+    fsize.textContent = formatBytes(file.size);
+    preview.style.display = "flex";
+    zone.style.display    = "none";
+    submitBtn.disabled    = false;
+    lucide.createIcons();
+  }
+
+  function formatBytes(bytes) {
+    if (bytes < 1024) return bytes + " B";
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+    return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+  }
+</script>
+{% endblock %}

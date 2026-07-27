@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RestoIQ — Iniciar sesión</title>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../../static/css/auth.css">
+</head>
+
+<body>
+
+  <!-- Panel lateral izquierdo -->
+  <aside class="side-panel" aria-hidden="true">
+    <div class="side-brand">
+      <div class="side-icon">
+        <img class="logo-1" src="../../static/restoIQ_logo_pg.PNG" alt="logo RestoIQ">
+      </div>
+    </div>
+
+    <div class="side-content">
+      <p class="side-tagline">Bienvenido de nuevo a RestoIQ</p>
+      <p class="side-desc">Accede a tus dashboards, predicciones y reportes inteligentes para tomar mejores decisiones hoy.</p>
+      <ul class="side-features">
+        <li class="side-feature"><span class="feat-dot"></span>Predicción de ventas con IA</li>
+        <li class="side-feature"><span class="feat-dot"></span>Clasificación de productos por demanda</li>
+        <li class="side-feature"><span class="feat-dot"></span>Alertas inteligentes de inventario</li>
+        <li class="side-feature"><span class="feat-dot"></span>Dashboards interactivos en tiempo real</li>
+      </ul>
+    </div>
+
+    <p class="side-footer">© 2026 RestoIQ · Restaurant Intelligence Platform</p>
+  </aside>
+
+  <!-- Panel de formulario -->
+  <main class="form-panel">
+    <div class="form-card">
+
+      <!-- Logo solo visible en móvil -->
+      <div class="mobile-logo" aria-hidden="true">
+        <div class="mobile-icon">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
+            <line x1="8" y1="3" x2="8" y2="9" stroke="white" stroke-width="1.8" stroke-linecap="round"/>
+            <line x1="12" y1="3" x2="12" y2="9" stroke="white" stroke-width="1.8" stroke-linecap="round"/>
+            <line x1="16" y1="3" x2="16" y2="9" stroke="white" stroke-width="1.8" stroke-linecap="round"/>
+            <path d="M8 9 Q10 12 10 14 L10 20" fill="none" stroke="white" stroke-width="1.8" stroke-linecap="round"/>
+            <polyline points="14,18 16,14 18,16 21,10" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle cx="21" cy="10" r="1.5" fill="white"/>
+          </svg>
+        </div>
+        <p class="mobile-name">Resto<span class="iq">IQ</span></p>
+        <p class="mobile-sub">Predict · Optimize · Serve</p>
+      </div>
+
+      <header class="form-header">
+        <h1 class="form-title">Iniciar sesión</h1>
+        <p class="form-subtitle">Ingresa tus credenciales para continuar</p>
+      </header>
+
+      <!-- Mensajes flash de Flask -->
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          {% for category, message in messages %}
+            <div class="flash flash--{{ category }}">{{ message }}</div>
+          {% endfor %}
+        {% endif %}
+      {% endwith %}
+
+      <form id="loginForm" method="POST" action="/login" novalidate>
+
+        <div class="field">
+          <label for="email">Correo electrónico</label>
+          <div class="input-wrap">
+            <span class="input-icon">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+                <polyline points="22,6 12,13 2,6"/>
+              </svg>
+            </span>
+            <input type="email" id="email" name="email" placeholder="tu@email.com" autocomplete="email" required />
+          </div>
+          <p class="field-error" id="email-error">Ingresa un correo válido</p>
+        </div>
+
+        <div class="field">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.4rem;">
+            <label for="password" style="margin-bottom:0;">Contraseña</label>
+            <a href="#" class="forgot-link">¿Olvidaste tu contraseña?</a>
+          </div>
+          <div class="input-wrap">
+            <span class="input-icon">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+              </svg>
+            </span>
+            <input type="password" id="password" name="password" placeholder="Tu contraseña" autocomplete="current-password" required />
+            <button type="button" class="toggle-pass" id="togglePass" aria-label="Mostrar contraseña">
+              <svg id="eyeIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                <circle cx="12" cy="12" r="3"/>
+              </svg>
+            </button>
+          </div>
+          <p class="field-error" id="password-error">Ingresa tu contraseña</p>
+        </div>
+
+        <button type="submit" class="btn-primary" style="margin-top:0.5rem;">
+          <span class="btn-shine"></span>
+          Iniciar sesión
+        </button>
+
+      </form>
+
+      <div class="divider">o</div>
+
+      <p class="login-link">¿No tienes cuenta? <a href="/register">Regístrate gratis</a></p>
+
+    </div>
+  </main>
+
+  <script>
+    // Toggle contraseña
+    const togglePass = document.getElementById('togglePass');
+    const passInput  = document.getElementById('password');
+    const eyeIcon    = document.getElementById('eyeIcon');
+
+    togglePass.addEventListener('click', () => {
+      const show = passInput.type === 'password';
+      passInput.type = show ? 'text' : 'password';
+      eyeIcon.innerHTML = show
+        ? '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>'
+        : '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>';
+    });
+
+    // Validación al enviar
+    document.getElementById('loginForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      let valid = true;
+
+      const fields = [
+        { id: 'email',    errId: 'email-error',    check: v => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v) },
+        { id: 'password', errId: 'password-error', check: v => v.length > 0 },
+      ];
+
+      fields.forEach(({ id, errId, check }) => {
+        const input = document.getElementById(id);
+        const err   = document.getElementById(errId);
+        const ok    = check(input.value);
+        input.classList.toggle('error', !ok);
+        err.style.display = ok ? 'none' : 'block';
+        if (!ok) valid = false;
+      });
+
+      if (valid) {
+        e.target.submit();
+      }
+    });
+
+    // Quitar error al escribir
+    document.querySelectorAll('input').forEach(input => {
+      input.addEventListener('input', () => {
+        input.classList.remove('error');
+        const err = document.getElementById(input.id + '-error');
+        if (err) err.style.display = 'none';
+      });
+    });
+  </script>
+
+</body>
+</html>

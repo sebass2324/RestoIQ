@@ -1,0 +1,8 @@
+python services/data_generator.py restaurante    data_generator
+
+python services/sales_model.py
+
+total ventas 
+formulario-usaurio 
+indicadores
+graficar metricas
