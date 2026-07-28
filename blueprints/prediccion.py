@@ -47,6 +47,8 @@ def ejecutar():
 @login_required
 def grafico_regresion():
     ruta = _ruta_grafico_regresion(current_user.id)
+    from services.storage_service import asegurar_local
+    asegurar_local(os.path.basename(ruta), ruta)
     if not os.path.exists(ruta):
         return jsonify({"ok": False, "error": "Todavía no hay un gráfico disponible."}), 404
     return send_file(ruta, mimetype="image/png")

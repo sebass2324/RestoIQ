@@ -84,6 +84,15 @@ def _obtener_modelo(user_id: int, df: pd.DataFrame, config: ConfiguracionAnalisi
     registro_modelo = ModeloML.query.filter_by(user_id=user_id).first()
     ruta = _ruta_modelo(user_id)
 
+    # En un arranque en frío (redeploy/reinicio), el .pkl no está en
+    # disco local aunque el registro en MySQL diga que existe — antes
+    # de asumir "hay que reentrenar", intentar descargarlo de Supabase
+    # Storage. Si Supabase no está configurado (desarrollo local), esto
+    # no hace nada y se comporta exactamente como antes.
+    if registro_modelo is not None:
+        from services.storage_service import asegurar_local
+        asegurar_local(os.path.basename(ruta), ruta)
+
     hash_desactualizado = (
         config.reentrenar_automatico
         and (registro_modelo is None or registro_modelo.dataset_hash != hash_actual)
@@ -114,13 +123,16 @@ def _obtener_modelo(user_id: int, df: pd.DataFrame, config: ConfiguracionAnalisi
     holdout = metricas.get("holdout")
     if holdout and holdout.get("scatter"):
         scatter = holdout["scatter"]
+        ruta_grafico = _ruta_grafico_regresion(user_id)
         generar_grafico_regresion_png(
             real=[p["real"] for p in scatter],
             predicho=[p["predicho"] for p in scatter],
             r2=holdout.get("r2_ganador", 0),
             nombre_modelo=holdout.get("modelo_ganador", "el modelo"),
-            ruta_salida=_ruta_grafico_regresion(user_id),
+            ruta_salida=ruta_grafico,
         )
+        from services.storage_service import subir
+        subir(ruta_grafico, os.path.basename(ruta_grafico))
 
     if registro_modelo is None:
         registro_modelo = ModeloML(user_id=user_id, ruta_pkl=ruta, dataset_hash=hash_actual)

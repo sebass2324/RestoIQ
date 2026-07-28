@@ -46,6 +46,8 @@ def ejecutar():
 @login_required
 def matriz_confusion_imagen():
     ruta = _ruta_matriz(current_user.id)
+    from services.storage_service import asegurar_local
+    asegurar_local(os.path.basename(ruta), ruta)
     if not os.path.exists(ruta):
         return jsonify({"ok": False, "error": "Todavía no hay un modelo entrenado."}), 404
     return send_file(ruta, mimetype="image/png")

@@ -799,6 +799,11 @@ async function cargarPrediccion() {
     datosPrediccion = data;
     renderTodo(data);
 
+    // Se guarda en el navegador para que volver de otra página no
+    // dispare una nueva request al servidor — dura mientras la
+    // pestaña esté abierta.
+    try { sessionStorage.setItem("prediccion_cache", JSON.stringify(data)); } catch (e) {}
+
   } catch (e) {
     alert("Error de conexión: " + e.message);
   } finally {
@@ -809,9 +814,26 @@ async function cargarPrediccion() {
 }
 
 document.getElementById("btnPredecir").addEventListener("click", cargarPrediccion);
-document.addEventListener("DOMContentLoaded", cargarPrediccion);
+
+// Al entrar a la página: si ya hay una predicción de esta sesión
+// guardada en el navegador, mostrarla directo (sin pedirle nada al
+// servidor). El botón "Actualizar predicción" sigue forzando una
+// consulta real en cualquier momento.
+function iniciarPrediccion() {
+  try {
+    const guardado = sessionStorage.getItem("prediccion_cache");
+    if (guardado) {
+      datosPrediccion = JSON.parse(guardado);
+      renderTodo(datosPrediccion);
+      return;
+    }
+  } catch (e) { /* si falla la lectura del caché, se sigue de largo y se pide al servidor */ }
+  cargarPrediccion();
+}
+
+document.addEventListener("DOMContentLoaded", iniciarPrediccion);
 // Por si el script corre después de DOMContentLoaded (defer/scripts al final del body)
-if (document.readyState !== "loading") cargarPrediccion();
+if (document.readyState !== "loading") iniciarPrediccion();
 
 // ── Botón reentrenar ──────────────────────────────────────
 document.getElementById("btnReentrenar").addEventListener("click", async () => {

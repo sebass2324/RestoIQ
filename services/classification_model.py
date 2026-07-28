@@ -399,8 +399,15 @@ class ModeloAbastecimiento:
     # ────────────────────────────────────────
 
     def guardar(self, ruta):
-        import joblib; joblib.dump(self, ruta)
+        import joblib, os
+        joblib.dump(self, ruta)
+        from services.storage_service import subir
+        subir(ruta, os.path.basename(ruta))
 
     @staticmethod
     def cargar(ruta):
-        import joblib; return joblib.load(ruta)
+        import joblib, os
+        if not os.path.exists(ruta):
+            from services.storage_service import descargar
+            descargar(os.path.basename(ruta), ruta)
+        return joblib.load(ruta)

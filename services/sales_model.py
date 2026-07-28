@@ -950,8 +950,20 @@ class SalesModel:
             pickle.dump(self, f)
         print(f"✅ Modelo guardado en: {ruta}")
 
+        # Servidor desechable: el disco local es efímero en producción
+        # (Render, etc.) — Supabase Storage es la fuente de verdad. Si
+        # no está configurado (desarrollo local), no hace nada.
+        from services.storage_service import subir
+        subir(ruta, os.path.basename(ruta))
+
     @classmethod
     def cargar(cls, ruta="models/sales_model.pkl") -> "SalesModel":
+        if not os.path.exists(ruta):
+            # Arranque en frío (redeploy/reinicio): el disco local no
+            # tiene el archivo — intentar traerlo de Supabase antes
+            # de rendirse.
+            from services.storage_service import descargar
+            descargar(os.path.basename(ruta), ruta)
         with open(ruta, "rb") as f:
             modelo = pickle.load(f)
         print(f" Modelo cargado desde: {ruta}")

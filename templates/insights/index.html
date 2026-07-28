@@ -6,6 +6,28 @@
 
 {% block estilos %}
 <style>
+  /* ══ Página oscura, aislada del resto del panel (identidad de la
+     landing pública). Redefine variables SOLO dentro de .insights-dark
+     — todo lo que ya usa var(--white)/var(--border)/var(--dark)/etc.
+     se adapta solo, sin reescribir cada regla de tarjeta. ══ */
+  .insights-dark {
+    --dark:       #F2F0FA;
+    --gray-mid:   #A6A3C4;
+    --white:      #1E1B2E;
+    --border:     rgba(255,255,255,.08);
+    --gray-lt:    rgba(255,255,255,.06);
+    --purple:     #8B7FFF;
+    --purple-lt:  rgba(139,127,255,.15);
+    --teal:       #2DD4A7;
+    --teal-lt:    rgba(45,212,167,.15);
+
+    background: radial-gradient(circle at 15% 0%, #1F1A3D 0%, #15121F 55%);
+    border-radius: 22px;
+    padding: 1.75rem;
+    position: relative;
+    overflow: hidden;
+  }
+
   .layout-insights { display: grid; grid-template-columns: 1fr 300px; gap: 1.5rem; align-items: start; }
   @media (max-width: 900px) { .layout-insights { grid-template-columns: 1fr; } }
 
@@ -14,11 +36,11 @@
     padding: 1.25rem; position: sticky; top: 1.5rem;
   }
   .panel-lateral h4 { font-size: .78rem; text-transform: uppercase; letter-spacing: .05em; color: var(--gray-mid); margin-bottom: .8rem; }
-  .panel-resumen-fila { display: flex; justify-content: space-between; align-items: center; padding: .4rem 0; font-size: .86rem; }
-  .panel-resumen-num { font-family: var(--mono); font-weight: 700; font-size: 1.1rem; }
+  .panel-resumen-fila { display: flex; justify-content: space-between; align-items: center; padding: .4rem 0; font-size: .86rem; color: var(--dark); }
+  .panel-resumen-num { font-family: var(--mono); font-weight: 700; font-size: 1.1rem; color: var(--dark); }
   .panel-divider { height: 1px; background: var(--border); margin: .8rem 0; }
   .panel-chip { display: inline-block; font-size: .74rem; background: var(--gray-lt); color: var(--gray-mid); padding: .25rem .6rem; border-radius: 7px; margin: 2px; }
-  .panel-urgente { font-size: .82rem; color: var(--dark); background: #FEF2F2; border-radius: 10px; padding: .7rem .8rem; margin-top: .5rem; }
+  .panel-urgente { font-size: .82rem; color: var(--dark); background: rgba(220,38,38,.15); border: 1px solid rgba(220,38,38,.3); border-radius: 10px; padding: .7rem .8rem; margin-top: .5rem; }
 
   .insight-card {
     background: var(--white); border: 1px solid var(--border); border-radius: 16px;
@@ -26,10 +48,10 @@
     border-left: 4px solid var(--border);
     transition: box-shadow .2s, transform .2s;
   }
-  .insight-card:hover { box-shadow: 0 8px 20px rgba(83,74,183,.1); transform: translateY(-2px); }
-  .insight-card.riesgo        { border-left-color: #DC2626; }
-  .insight-card.oportunidad   { border-left-color: #16A34A; }
-  .insight-card.informativa   { border-left-color: #2563EB; }
+  .insight-card:hover { box-shadow: 0 8px 24px rgba(139,127,255,.18); transform: translateY(-2px); }
+  .insight-card.riesgo        { border-left-color: #F87171; }
+  .insight-card.oportunidad   { border-left-color: #34D399; }
+  .insight-card.informativa   { border-left-color: #60A5FA; }
 
   .insight-top { display: flex; align-items: center; gap: .6rem; margin-bottom: .5rem; flex-wrap: wrap; }
   .insight-icon { width: 34px; height: 34px; border-radius: 9px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
@@ -42,23 +64,23 @@
   .tag-Predictivo    { background: var(--purple-lt); color: var(--purple); }
   .tag-Operativo     { background: var(--teal-lt);   color: var(--teal); }
   .tag-Cruzado       { background: linear-gradient(90deg, var(--purple-lt), var(--teal-lt)); color: var(--purple); }
-  .tag-Confiabilidad { background: #FEF3E8; color: #E99B2F; }
+  .tag-Confiabilidad { background: rgba(233,155,47,.18); color: #F0B357; }
 
   .tag-polaridad { font-size: .68rem; font-weight: 700; padding: .2rem .55rem; border-radius: 999px; }
-  .tag-polaridad.riesgo      { background: #FEE2E2; color: #B91C1C; }
-  .tag-polaridad.oportunidad { background: #DCFCE7; color: #15803D; }
-  .tag-polaridad.informativa { background: #DBEAFE; color: #1D4ED8; }
+  .tag-polaridad.riesgo      { background: rgba(248,113,113,.18); color: #F87171; }
+  .tag-polaridad.oportunidad { background: rgba(52,211,153,.18);  color: #34D399; }
+  .tag-polaridad.informativa { background: rgba(96,165,250,.18);  color: #60A5FA; }
 
   .tag-prioridad { font-size: .7rem; font-weight: 700; padding: .2rem .6rem; border-radius: 999px; }
-  .tag-prioridad.Alta  { background: #FEE2E2; color: #B91C1C; }
-  .tag-prioridad.Media { background: #FEF3C7; color: #92400E; }
-  .tag-prioridad.Baja  { background: #DCFCE7; color: #15803D; }
+  .tag-prioridad.Alta  { background: rgba(248,113,113,.18); color: #F87171; }
+  .tag-prioridad.Media { background: rgba(240,179,87,.18);  color: #F0B357; }
+  .tag-prioridad.Baja  { background: rgba(52,211,153,.18);  color: #34D399; }
 
   .insight-titulo { font-size: 1.02rem; font-weight: 700; color: var(--dark); margin: .3rem 0 .6rem; }
 
   .insight-seccion { margin-bottom: .55rem; }
   .insight-label { font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--gray-mid); margin-bottom: .15rem; }
-  .insight-texto { font-size: .87rem; color: var(--dark); line-height: 1.5; }
+  .insight-texto { font-size: .87rem; color: var(--dark); line-height: 1.5; opacity: .9; }
   .insight-accion-texto { font-size: .87rem; font-weight: 600; color: var(--purple); }
   .insight-impacto-texto { font-size: .82rem; color: var(--teal); font-style: italic; }
 
@@ -66,55 +88,62 @@
   .chip-evidencia { font-size: .74rem; background: var(--gray-lt); color: var(--gray-mid); padding: .25rem .6rem; border-radius: 7px; }
 
   .insight-vacio { text-align: center; padding: 3rem 1.5rem; color: var(--gray-mid); }
-  .spinner-insights {
-    width: 40px; height: 40px; border: 4px solid var(--gray-lt);
-    border-top-color: var(--purple); border-radius: 50%;
-    margin: 0 auto; animation: girar-insights .8s linear infinite;
+
+  /* ══ Estado de carga: nodos animados sobre canvas, apagados apenas
+     termina de cargar — no queda corriendo de fondo gastando CPU. ══ */
+  #estadoCargando { position: relative; text-align: center; padding: 2.5rem 1rem; }
+  #canvasNodos { width: 100%; height: 220px; display: block; border-radius: 14px; }
+  #textoCargando {
+    margin-top: 1rem; color: var(--gray-mid); font-weight: 600;
+    font-family: var(--mono); font-size: .85rem; letter-spacing: .02em;
   }
-  @keyframes girar-insights { to { transform: rotate(360deg); } }
 </style>
 {% endblock %}
 
 {% block contenido %}
-<div class="aviso" style="background:#EFF6FF;color:#1E40AF;padding:.8rem 1rem;border-radius:10px;font-size:.85rem;margin-bottom:1rem;">
-  Este módulo no ejecuta ningún modelo nuevo — interpreta lo que Predicción de Demanda y
-  Clasificación de Prioridad ya calcularon, y lo traduce en decisiones concretas.
-</div>
+<div class="insights-dark">
 
-<div id="estadoInicial" class="insight-vacio" style="background:var(--white);border:1px solid var(--border);border-radius:16px;">
-  <h3 style="color:var(--dark);margin-bottom:.5rem;">Generar insights de hoy</h3>
-  <p style="max-width:420px;margin:0 auto 1.2rem;">Cruza tu predicción de demanda con la prioridad de abastecimiento para darte decisiones concretas, no más números.</p>
-  <button class="btn-upload" style="margin:0 auto;" onclick="generarInsights()">Generar insights</button>
-</div>
+  <div class="aviso" style="background:rgba(96,165,250,.12);color:#93C5FD;border:1px solid rgba(96,165,250,.25);padding:.8rem 1rem;border-radius:10px;font-size:.85rem;margin-bottom:1.25rem;">
+    Este módulo no ejecuta ningún modelo nuevo — interpreta lo que Predicción de Demanda y
+    Clasificación de Prioridad ya calcularon, y lo traduce en decisiones concretas.
+  </div>
 
-<div id="estadoCargando" style="display:none;text-align:center;padding:3rem;">
-  <div class="spinner-insights"></div>
-  <p style="margin-top:1rem;color:var(--gray-mid);font-weight:600;">Cruzando ambos modelos...</p>
-</div>
+  <div id="estadoInicial" class="insight-vacio" style="background:var(--white);border:1px solid var(--border);border-radius:16px;">
+    <h3 style="color:var(--dark);margin-bottom:.5rem;">Generar insights de hoy</h3>
+    <p style="max-width:420px;margin:0 auto 1.2rem;">Cruza tu predicción de demanda con la prioridad de abastecimiento para darte decisiones concretas, no más números.</p>
+    <button class="btn-upload" style="margin:0 auto;" onclick="generarInsights()">Generar insights</button>
+  </div>
 
-<div id="estadoError" style="display:none;" class="insight-card riesgo">
-  <p id="mensajeError" style="color:var(--dark);"></p>
-</div>
+  <div id="estadoCargando" style="display:none;">
+    <canvas id="canvasNodos"></canvas>
+    <p id="textoCargando">Cruzando ambos modelos...</p>
+  </div>
 
-<div id="contenidoInsights" style="display:none;">
-  <div class="layout-insights">
-    <div id="listaInsights"></div>
+  <div id="estadoError" style="display:none;" class="insight-card riesgo">
+    <p id="mensajeError" style="color:var(--dark);"></p>
+  </div>
 
-    <div class="panel-lateral">
-      <h4>Resumen</h4>
-      <div id="panelResumen"></div>
-      <div class="panel-divider"></div>
-      <h4>Categorías afectadas</h4>
-      <div id="panelCategorias"></div>
-      <div id="panelUrgenteWrap"></div>
+  <div id="contenidoInsights" style="display:none;">
+    <div class="layout-insights">
+      <div id="listaInsights"></div>
+
+      <div class="panel-lateral">
+        <h4>Resumen</h4>
+        <div id="panelResumen"></div>
+        <div class="panel-divider"></div>
+        <h4>Categorías afectadas</h4>
+        <div id="panelCategorias"></div>
+        <div id="panelUrgenteWrap"></div>
+      </div>
+    </div>
+
+    <div style="text-align:right;margin-top:1rem;">
+      <button class="btn-secundario" style="border:1px solid var(--border);background:var(--white);color:var(--dark);border-radius:9px;padding:.5rem .9rem;font-size:.82rem;font-weight:600;cursor:pointer;" onclick="generarInsights()">
+        Regenerar
+      </button>
     </div>
   </div>
 
-  <div style="text-align:right;margin-top:1rem;">
-    <button class="btn-secundario" style="border:1px solid var(--border);background:var(--white);border-radius:9px;padding:.5rem .9rem;font-size:.82rem;font-weight:600;cursor:pointer;" onclick="generarInsights()">
-      Regenerar
-    </button>
-  </div>
 </div>
 {% endblock %}
 
@@ -122,15 +151,77 @@
 <script>
 const ICONOS_TIPO = {Predictivo: "trending-up", Operativo: "package", Cruzado: "zap", Confiabilidad: "alert-triangle"};
 
+// ── Nodos animados (canvas, sin librerías) ──────────────────
+// Corre solo mientras se genera el análisis; se apaga (cancelAnimationFrame)
+// apenas hay resultado, para no gastar CPU de fondo innecesariamente.
+let detenerNodos = null;
+
+function iniciarNodosAnimados(canvasId, n = 26) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return () => {};
+  const ctx = canvas.getContext("2d");
+  const dpr = window.devicePixelRatio || 1;
+
+  function ajustar() {
+    canvas.width = canvas.clientWidth * dpr;
+    canvas.height = canvas.clientHeight * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  ajustar();
+
+  const ancho = canvas.clientWidth, alto = canvas.clientHeight;
+  const nodos = Array.from({length: n}, () => ({
+    x: Math.random() * ancho, y: Math.random() * alto,
+    vx: (Math.random() - 0.5) * 0.3, vy: (Math.random() - 0.5) * 0.3,
+  }));
+
+  let vivo = true;
+  function frame() {
+    if (!vivo) return;
+    ctx.clearRect(0, 0, ancho, alto);
+    nodos.forEach(p => {
+      p.x += p.vx; p.y += p.vy;
+      if (p.x < 0 || p.x > ancho) p.vx *= -1;
+      if (p.y < 0 || p.y > alto) p.vy *= -1;
+    });
+    for (let i = 0; i < nodos.length; i++) {
+      for (let j = i + 1; j < nodos.length; j++) {
+        const dx = nodos[i].x - nodos[j].x, dy = nodos[i].y - nodos[j].y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < 110) {
+          ctx.strokeStyle = `rgba(139,127,255,${0.22 * (1 - dist / 110)})`;
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(nodos[i].x, nodos[i].y);
+          ctx.lineTo(nodos[j].x, nodos[j].y);
+          ctx.stroke();
+        }
+      }
+    }
+    nodos.forEach(p => {
+      ctx.fillStyle = "rgba(139,127,255,.85)";
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 2, 0, Math.PI * 2);
+      ctx.fill();
+    });
+    requestAnimationFrame(frame);
+  }
+  frame();
+  return () => { vivo = false; };
+}
+
 async function generarInsights() {
   document.getElementById("estadoInicial").style.display = "none";
   document.getElementById("estadoError").style.display = "none";
   document.getElementById("contenidoInsights").style.display = "none";
   document.getElementById("estadoCargando").style.display = "block";
+  detenerNodos = iniciarNodosAnimados("canvasNodos");
 
   try {
     const res = await fetch("/insights/generar", {method: "POST"});
     const data = await res.json();
+
+    if (detenerNodos) { detenerNodos(); detenerNodos = null; }
     document.getElementById("estadoCargando").style.display = "none";
 
     if (!data.ok) {
@@ -142,7 +233,18 @@ async function generarInsights() {
     pintarInsights(data.insights);
     pintarPanel(data.resumen);
     document.getElementById("contenidoInsights").style.display = "block";
+
+    // Se guarda en el navegador (no en el servidor) para que volver
+    // de otra página no borre lo que ya se generó. Dura mientras la
+    // pestaña esté abierta — se borra sola al cerrarla, no es
+    // persistencia permanente (eso se decidió sacar a propósito).
+    try {
+      sessionStorage.setItem("insights_cache", JSON.stringify({
+        insights: data.insights, resumen: data.resumen,
+      }));
+    } catch (e) { /* si el navegador bloquea sessionStorage, no pasa nada grave */ }
   } catch (e) {
+    if (detenerNodos) { detenerNodos(); detenerNodos = null; }
     document.getElementById("estadoCargando").style.display = "none";
     document.getElementById("estadoError").style.display = "block";
     document.getElementById("mensajeError").textContent = "Error al generar insights: " + e.message;
@@ -220,5 +322,21 @@ function pintarInsights(insights) {
 
   lucide.createIcons();
 }
+
+// Al entrar a la página, si ya hay un análisis generado en esta
+// sesión del navegador, mostrarlo directo — no hace falta volver a
+// pedirlo al servidor ni que el usuario apriete "Generar" de nuevo.
+document.addEventListener("DOMContentLoaded", () => {
+  try {
+    const guardado = sessionStorage.getItem("insights_cache");
+    if (guardado) {
+      const { insights, resumen } = JSON.parse(guardado);
+      document.getElementById("estadoInicial").style.display = "none";
+      pintarInsights(insights);
+      pintarPanel(resumen);
+      document.getElementById("contenidoInsights").style.display = "block";
+    }
+  } catch (e) { /* si algo falla leyendo el caché, se queda en el estado inicial normal */ }
+});
 </script>
 {% endblock %}

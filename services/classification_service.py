@@ -116,6 +116,13 @@ def _obtener_modelo(user_id: int, df: pd.DataFrame, forzar: bool = False):
     registro = ModeloClasificacion.query.filter_by(user_id=user_id).first()
     ruta = _ruta_modelo(user_id)
 
+    # Arranque en frío: intentar traer el .pkl de Supabase Storage
+    # antes de asumir que hace falta reentrenar. Sin configurar
+    # Supabase (desarrollo local), no hace nada.
+    if registro is not None:
+        from services.storage_service import asegurar_local
+        asegurar_local(os.path.basename(ruta), ruta)
+
     necesita_reentrenar = (
         forzar
         or registro is None
@@ -138,9 +145,12 @@ def _obtener_modelo(user_id: int, df: pd.DataFrame, forzar: bool = False):
     modelo.guardar(ruta)
 
     if metricas.get("matriz_confusion") and metricas.get("clases"):
+        ruta_matriz = _ruta_matriz(user_id)
         generar_matriz_confusion_png(
-            metricas["matriz_confusion"], metricas["clases"], _ruta_matriz(user_id)
+            metricas["matriz_confusion"], metricas["clases"], ruta_matriz
         )
+        from services.storage_service import subir
+        subir(ruta_matriz, os.path.basename(ruta_matriz))
 
     if registro is None:
         registro = ModeloClasificacion(user_id=user_id, ruta_pkl=ruta, dataset_hash=hash_actual)
