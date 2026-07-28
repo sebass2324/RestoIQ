@@ -197,31 +197,55 @@ def _predecir_horizonte(modelo: ModeloAbastecimiento, df: pd.DataFrame, dias: in
     productos = sorted(df["producto"].unique().tolist())
     fechas = _fechas_futuras(dias, dias_operacion)
 
-    resultado = []
+    # Armar TODOS los contextos primero (día × producto), sin predecir
+    # todavía — la predicción se hace una sola vez, en lote, más abajo.
+    # Predecir uno por uno acá adentro dispara joblib.Parallel una vez
+    # por cada llamada, que en un horizonte con muchos días×productos
+    # es mucho overhead de memoria innecesario (causó un Out of Memory
+    # en producción con recursos limitados).
+    contextos = []
+    metadatos = []  # guarda fecha/producto/categoria/factores en el mismo orden que contextos
     for fecha in fechas:
         feats_dia = _features_fecha(fecha)
-        productos_dia = []
+        factores = _factores_dia(feats_dia)
         for prod in productos:
-            contexto = {
+            contextos.append({
                 **feats_dia,
                 "categoria":           cat_por_producto.get(prod),
                 "precio":              precio_por_producto.get(prod),
                 "promocion":           0,
                 "descuento_pct":       0,
                 "es_evento_especial":  0,
-            }
-            r = modelo.predecir(contexto)
-            productos_dia.append({
-                "producto":       prod,
-                "categoria":      cat_por_producto.get(prod) or "—",
-                "prioridad":      r["prioridad"],
-                "confianza":      r["confianza"],
-                "probabilidades": r["probabilidades"],
-                "factores":       _factores_dia(feats_dia),
             })
-        orden = {"Alta": 0, "Media": 1, "Baja": 2}
-        productos_dia.sort(key=lambda p: orden.get(p["prioridad"], 3))
-        resultado.append({"fecha": fecha.strftime("%Y-%m-%d"), "productos": productos_dia})
+            metadatos.append({
+                "fecha": fecha.strftime("%Y-%m-%d"),
+                "producto": prod,
+                "categoria": cat_por_producto.get(prod) or "—",
+                "factores": factores,
+            })
+
+    predicciones = modelo.predecir_lote(contextos)
+
+    # Reagrupar por fecha, en el mismo orden que ya tenías
+    por_fecha = {}
+    for meta, r in zip(metadatos, predicciones):
+        fila = {
+            "producto":       meta["producto"],
+            "categoria":      meta["categoria"],
+            "prioridad":      r["prioridad"],
+            "confianza":      r["confianza"],
+            "probabilidades": r["probabilidades"],
+            "factores":       meta["factores"],
+        }
+        por_fecha.setdefault(meta["fecha"], []).append(fila)
+
+    orden_prioridad = {"Alta": 0, "Media": 1, "Baja": 2}
+    resultado = []
+    for fecha in fechas:
+        fecha_str = fecha.strftime("%Y-%m-%d")
+        productos_dia = por_fecha.get(fecha_str, [])
+        productos_dia.sort(key=lambda p: orden_prioridad.get(p["prioridad"], 3))
+        resultado.append({"fecha": fecha_str, "productos": productos_dia})
     return resultado
 
 
