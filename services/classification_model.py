@@ -58,7 +58,6 @@ import numpy as np
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.calibration import CalibratedClassifierCV
-from sklearn.model_selection import RandomizedSearchCV, StratifiedKFold
 from sklearn.dummy import DummyClassifier
 from sklearn.metrics import (
     accuracy_score, f1_score, precision_recall_fscore_support,
@@ -67,25 +66,29 @@ from sklearn.metrics import (
 
 
 CLASES = ["Baja", "Media", "Alta"]
+BANDAS_PRECIO = ["Bajo", "Medio", "Alto"]
 
 COMPONENTES_PRODUCTO = ["rotacion", "volatilidad", "impacto_promo"]
 FLAGS_DIA = ["es_finde", "es_feriado", "promocion", "es_quincena", "es_puente"]
 
-# Contexto usable como feature (solo si existe en el df). SIN 'precio'.
+# Contexto usable como feature (solo si existe en el df). Precio entra
+# SOLO como banda (Bajo/Medio/Alto), nunca crudo — el valor exacto
+# actúa como ID de producto y rompe la generalización a productos
+# nuevos (memorización, ver docstring del módulo); la banda conserva
+# la señal ordinal ("los productos caros rotan distinto que los
+# baratos") sin identificar a un producto puntual.
 FEATURES_PRODUCTO   = ["categoria", "promocion", "descuento_pct", "es_evento_especial"]
 FEATURES_TEMPORALES = ["dia_semana", "mes", "semana_anio",
                        "es_finde", "es_feriado", "es_puente", "es_quincena"]
 
 FRACCION_TRAIN = 0.8
 
-# Espacio de búsqueda de hiperparámetros — pequeño a propósito (rápido
-# de correr en cada entrenamiento, no es investigación exhaustiva).
-ESPACIO_BUSQUEDA = {
-    "max_depth":        [6, 8, 10, 12, None],
-    "n_estimators":      [100, 200, 300],
-    "min_samples_leaf": [1, 2, 5, 10],
-}
-N_ITER_BUSQUEDA = 10
+# Hiperparámetros del RF fijos, no buscados: una búsqueda con
+# RandomizedSearchCV se probó y midió (~6s por entrenamiento) contra
+# estos valores fijos y la diferencia de F1 fue ruido, no mejora real
+# — se optó por lo más simple y rápido, no por complejidad sin
+# beneficio medido.
+RF_PARAMS = {"n_estimators": 200, "max_depth": 10, "min_samples_leaf": 2}
 
 
 class ModeloAbastecimiento:
@@ -101,6 +104,7 @@ class ModeloAbastecimiento:
         self.stats_producto  = {}     # {prod: {rotacion, volatilidad, impacto_promo}} (raw)
         self.stats_categoria = {}     # promedio raw por categoría (fallback + feature indirecta)
         self.stat_global     = {}     # fallback global (raw promedio)
+        self._umbrales_precio = None  # terciles de precio promedio por producto (train)
         self._arrays = {}             # {componente: np.array ordenado del train} para percentiles
         self.umbrales = None          # (u1, u2) terciles del score en train
         self.clases = CLASES
@@ -117,6 +121,7 @@ class ModeloAbastecimiento:
         df["fecha"] = pd.to_datetime(df["fecha"])
 
         agg = {"cantidad": "sum"}
+        if "precio" in df.columns:             agg["precio"] = "mean"
         if "descuento_pct" in df.columns:      agg["descuento_pct"] = "mean"
         if "promocion" in df.columns:          agg["promocion"] = "max"
         if "es_evento_especial" in df.columns: agg["es_evento_especial"] = "max"
@@ -172,6 +177,24 @@ class ModeloAbastecimiento:
 
         self.stat_global = {
             c: float(np.mean([s[c] for s in stats.values()])) for c in COMPONENTES_PRODUCTO}
+
+        # Umbrales de banda de precio — terciles del precio PROMEDIO
+        # por producto, calculados solo con train.
+        self._umbrales_precio = None
+        if "precio" in df_train_pd.columns:
+            precio_por_producto = df_train_pd.groupby("producto")["precio"].mean()
+            if precio_por_producto.notna().any() and precio_por_producto.nunique() > 1:
+                self._umbrales_precio = tuple(precio_por_producto.quantile([1/3, 2/3]).values)
+
+    def _banda_precio(self, precio):
+        if self._umbrales_precio is None or pd.isna(precio):
+            return "Medio"
+        p1, p2 = self._umbrales_precio
+        if precio <= p1:
+            return "Bajo"
+        if precio <= p2:
+            return "Medio"
+        return "Alto"
 
     def _pct(self, valor, comp):
         """Percentil empírico [0,1]: fracción de productos del train ≤ valor."""
@@ -241,6 +264,16 @@ class ModeloAbastecimiento:
                     lambda c: self._pct(self.stats_categoria.get(c, self.stat_global)[comp], comp)
                 ).astype(float).values
 
+        if "precio" in df_pd.columns and self._umbrales_precio is not None:
+            bandas = df_pd["precio"].apply(self._banda_precio)
+            dummies_precio = pd.get_dummies(bandas, prefix="precio")
+            for banda in BANDAS_PRECIO:
+                col = f"precio_{banda}"
+                if col not in dummies_precio.columns:
+                    dummies_precio[col] = 0
+            X = pd.concat([X.reset_index(drop=True),
+                           dummies_precio.reset_index(drop=True)], axis=1)
+
         if entrenando:
             self.feature_names = list(X.columns)
         else:
@@ -272,28 +305,21 @@ class ModeloAbastecimiento:
         X_train = self._construir_features(train, entrenando=True)
         X_test  = self._construir_features(test,  entrenando=False)
 
-        # ── Búsqueda pequeña de hiperparámetros (CV solo sobre train) ──
-        n_folds_busqueda = min(3, max(2, y_train.value_counts().min()))
-        busqueda = RandomizedSearchCV(
-            RandomForestClassifier(class_weight="balanced", random_state=self.random_state, n_jobs=-1),
-            param_distributions=ESPACIO_BUSQUEDA,
-            n_iter=N_ITER_BUSQUEDA,
-            cv=StratifiedKFold(n_splits=n_folds_busqueda, shuffle=True, random_state=self.random_state),
-            scoring="f1_macro",
-            random_state=self.random_state,
-            n_jobs=-1,
-        )
-        busqueda.fit(X_train, y_train)
-        self.mejores_hiperparametros = busqueda.best_params_
-
-        rf_optimo = RandomForestClassifier(
-            **busqueda.best_params_,
-            class_weight="balanced", random_state=self.random_state, n_jobs=-1,
+        # RF con hiperparámetros fijos (ver RF_PARAMS) — una búsqueda
+        # se probó y midió (~6s por entrenamiento) sin mejora real de
+        # F1 sobre estos valores fijos, así que se optó por lo más
+        # simple y rápido.
+        self.mejores_hiperparametros = dict(RF_PARAMS)
+        rf = RandomForestClassifier(
+            **RF_PARAMS, class_weight="balanced", random_state=self.random_state, n_jobs=-1,
         )
 
         # ── Calibración de probabilidades (predict_proba confiable) ──
+        # Barata (~0.4s medido) — se mantiene porque predict_proba()
+        # calibrado es lo que hace confiable el campo "confianza" que
+        # usa el sistema (y lo que podría usar Insights más adelante).
         n_folds_calib = min(3, max(2, y_train.value_counts().min()))
-        self.modelo = CalibratedClassifierCV(rf_optimo, method="sigmoid", cv=n_folds_calib)
+        self.modelo = CalibratedClassifierCV(rf, method="sigmoid", cv=n_folds_calib)
         self.modelo.fit(X_train, y_train)
 
         self._evaluar(X_test, y_test, y_train)

@@ -14,3 +14,6 @@ class Config:
 
     # Desactiva seguimiento interno innecesario
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+
+    SUPABASE_URL = os.getenv("SUPABASE_URL")
+    SUPABASE_KEY = os.getenv("SUPABASE_KEY")

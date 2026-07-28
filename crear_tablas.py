@@ -11,8 +11,10 @@ y las agrega con ALTER TABLE. Esto evita el error clásico:
 solo crea las que faltan por completo.
 
 No reemplaza a una herramienta de migraciones real (Flask-Migrate/Alembic)
-— no versiona los cambios ni soporta rollback — pero cubre el caso de
-uso de este proyecto: agregar columnas nuevas sin perder datos.
+— no versiona los cambios ni soporta rollback, y tampoco elimina
+columnas viejas que ya no se usan (ej. password_hash, reemplazada por
+supabase_id) — pero cubre el caso de uso de este proyecto: agregar
+columnas nuevas sin perder datos.
 
 Uso:
     python crear_tablas.py
@@ -23,12 +25,24 @@ from app import create_app
 from models import db
 
 # Columnas que deben existir en `ventas` más allá de las originales.
-# Formato: nombre -> tipo SQL para ALTER TABLE.
 COLUMNAS_VENTAS_NUEVAS = {
     "promocion":          "BOOLEAN NULL",
     "descuento_pct":       "FLOAT NULL",
     "es_evento_especial": "BOOLEAN NULL",
     "categoria":          "VARCHAR(100) NULL",
+}
+
+# Columnas que deben existir en `usuarios` más allá de las originales
+# (agregada con la migración a Supabase Auth).
+COLUMNAS_USUARIOS_NUEVAS = {
+    "supabase_id": "VARCHAR(64) NULL UNIQUE",
+}
+
+# Tabla -> diccionario de columnas nuevas. Agregar aquí cualquier tabla
+# futura que necesite el mismo tratamiento.
+TABLAS_A_SINCRONIZAR = {
+    "ventas":   COLUMNAS_VENTAS_NUEVAS,
+    "usuarios": COLUMNAS_USUARIOS_NUEVAS,
 }
 
 
@@ -38,12 +52,14 @@ def sincronizar_esquema():
         inspector = inspect(db.engine)
 
         # 1) Agregar columnas faltantes a tablas que YA existen
-        if inspector.has_table("ventas"):
-            columnas_actuales = {c["name"] for c in inspector.get_columns("ventas")}
-            for nombre, tipo in COLUMNAS_VENTAS_NUEVAS.items():
+        for tabla, columnas_nuevas in TABLAS_A_SINCRONIZAR.items():
+            if not inspector.has_table(tabla):
+                continue
+            columnas_actuales = {c["name"] for c in inspector.get_columns(tabla)}
+            for nombre, tipo in columnas_nuevas.items():
                 if nombre not in columnas_actuales:
-                    print(f"  → Agregando columna ventas.{nombre} ...")
-                    db.session.execute(text(f"ALTER TABLE ventas ADD COLUMN {nombre} {tipo}"))
+                    print(f"  → Agregando columna {tabla}.{nombre} ...")
+                    db.session.execute(text(f"ALTER TABLE {tabla} ADD COLUMN {nombre} {tipo}"))
             db.session.commit()
 
         # 2) Crear tablas que no existan en absoluto

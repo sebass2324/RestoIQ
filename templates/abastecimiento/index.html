@@ -69,6 +69,11 @@
   .aviso { background: #EFF6FF; color: #1E40AF; padding: .8rem 1rem; border-radius: 10px;
            font-size: .85rem; margin-bottom: 1rem; }
 
+  .spinner-abs { width: 42px; height: 42px; border: 4px solid var(--gray-lt);
+                 border-top-color: var(--purple); border-radius: 50%;
+                 margin: 0 auto; animation: girar-abs 0.8s linear infinite; }
+  @keyframes girar-abs { to { transform: rotate(360deg); } }
+
   .btn-secundario { border: 1px solid var(--border); background: var(--white); border-radius: 9px;
                      padding: .5rem .9rem; font-size: .82rem; font-weight: 600; cursor: pointer; }
 
@@ -92,9 +97,24 @@
     Corre el modelo de clasificación sobre tu historial actual y muestra qué productos
     requieren más atención para los próximos días.
   </p>
+  <div style="display:flex;gap:.6rem;align-items:center;justify-content:center;margin-bottom:1.2rem;">
+    <label for="horizonteInicial" style="font-size:.84rem;color:var(--gray-mid);">Analizar los próximos</label>
+    <select id="horizonteInicial" style="border:1px solid var(--border);border-radius:9px;padding:.45rem .8rem;font-size:.84rem;">
+      <option value="7" selected>7 días</option>
+      <option value="14">14 días</option>
+      <option value="30">30 días</option>
+    </select>
+  </div>
   <button class="btn-upload" style="margin:0 auto;" onclick="iniciarAnalisis()">
     Analizar prioridad de abastecimiento
   </button>
+</div>
+
+<div id="estadoCargando" class="abs-card" style="display:none;text-align:center;padding:3rem 1.5rem;">
+  <div class="spinner-abs"></div>
+  <p id="textoCargando" style="margin-top:1.2rem;font-size:.9rem;color:var(--gray-mid);font-weight:600;">
+    Analizando tu historial...
+  </p>
 </div>
 
 <div id="estadoVacio" style="display:none;" class="abs-card"><p id="mensajeError"></p></div>
@@ -136,6 +156,9 @@
           <option value="Baja">Baja</option>
         </select>
         <select id="filtroCategoria"><option value="">Todas las categorías</option></select>
+        <button class="btn-secundario" onclick="descargarCSV()" title="Descargar la tabla como CSV">
+          ⬇ Descargar CSV
+        </button>
       </div>
 
       <table class="abs-tabla">
@@ -229,14 +252,40 @@ let paginaActual = 1;
 const POR_PAGINA = 9;
 let chartDonut = null;
 
+let horizonteActual = 7;
+let _intervaloMensajes = null;
+
+const MENSAJES_CARGA = [
+  "Analizando tu historial...",
+  "Calculando prioridad por producto...",
+  "Casi listo...",
+];
+
+function mostrarCargando() {
+  document.getElementById("estadoInicial").style.display = "none";
+  document.getElementById("estadoCargando").style.display = "block";
+  let i = 0;
+  document.getElementById("textoCargando").textContent = MENSAJES_CARGA[0];
+  _intervaloMensajes = setInterval(() => {
+    i = (i + 1) % MENSAJES_CARGA.length;
+    document.getElementById("textoCargando").textContent = MENSAJES_CARGA[i];
+  }, 1800);
+}
+
+function ocultarCargando() {
+  clearInterval(_intervaloMensajes);
+  document.getElementById("estadoCargando").style.display = "none";
+}
+
 async function cargar() {
   try {
     const res = await fetch("/abastecimiento/ejecutar", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({dias: 7}),
+      body: JSON.stringify({dias: horizonteActual}),
     });
     const data = await res.json();
+    ocultarCargando();
     if (!data.ok) {
       document.getElementById("estadoVacio").style.display = "block";
       document.getElementById("mensajeError").textContent = data.error;
@@ -253,6 +302,7 @@ async function cargar() {
     document.getElementById("contenidoPrincipal").style.display = "block";
     if (window.lucide) lucide.createIcons();
   } catch (e) {
+    ocultarCargando();
     document.getElementById("estadoVacio").style.display = "block";
     document.getElementById("mensajeError").textContent = "Error al cargar: " + e.message;
   }
@@ -422,8 +472,35 @@ document.getElementById("filtroPrioridad").addEventListener("change", () => { pa
 document.getElementById("filtroCategoria").addEventListener("change", () => { paginaActual = 1; aplicarFiltrosYRender(); });
 
 function iniciarAnalisis() {
-  document.getElementById("estadoInicial").style.display = "none";
+  horizonteActual = parseInt(document.getElementById("horizonteInicial").value || 7);
+  mostrarCargando();
   cargar();
+}
+
+function descargarCSV() {
+  if (!productosFiltrados.length) return;
+  const idxDia = parseInt(document.getElementById("selectorFecha").value || 0);
+  const fecha = datosDias[idxDia] ? datosDias[idxDia].fecha : "";
+
+  const encabezado = ["Producto", "Categoría", "Prioridad", "Confianza (%)", "Factores clave", "Fecha"];
+  const filas = productosFiltrados.map(p => [
+    p.producto, p.categoria, p.prioridad,
+    Math.round((p.confianza || 0) * 100),
+    p.factores.join(" | "),
+    fecha,
+  ]);
+
+  const csv = [encabezado, ...filas]
+    .map(fila => fila.map(v => `"${String(v).replace(/"/g, '""')}"`).join(","))
+    .join("\n");
+
+  const blob = new Blob(["\uFEFF" + csv], {type: "text/csv;charset=utf-8;"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `prioridad_abastecimiento_${fecha || "hoy"}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 // El análisis ya NO se dispara solo al entrar a la página — requiere

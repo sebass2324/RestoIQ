@@ -268,6 +268,9 @@ def obtener_datos_demanda_usuario(user_id: int) -> dict:
         return {"estado": "sin_datos"}
 
     model = _obtener_o_entrenar_modelo(user_id, df, config)
+    registro_modelo = ModeloML.query.filter_by(user_id=user_id).first()
+    fecha_entrenamiento = registro_modelo.fecha_entrenamiento if registro_modelo else None
+
     resultado = model.predecir(dias=config.horizonte_dias, dias_operacion=config.dias_operacion_set())
 
     diario       = resultado["diario"]
@@ -340,6 +343,21 @@ def obtener_datos_demanda_usuario(user_id: int) -> dict:
             "holdout":         metricas.get("holdout"),
         },
         "registros_analizados": len(df),
+
+        # ── "El sistema aprende de tus datos" — transparencia sobre
+        # cuánto historial respalda el modelo actual, para que se
+        # entienda que no reemplaza conocimiento, lo acumula. ──
+        "info_modelo": {
+            "registros_usados":  len(df),
+            "meses_historial":   (
+                round(metricas["dias_historial"] / 30.44, 1)
+                if metricas.get("dias_historial") else None
+            ),
+            "fecha_ultimo_entrenamiento": (
+                fecha_entrenamiento.strftime("%d/%m/%Y %H:%M")
+                if fecha_entrenamiento else None
+            ),
+        },
 
         # ── Datos completos para la vista de exploración (/prediccion) ──
         "dia_valle":           {"fecha": fila_valle["fecha"], "cantidad": int(fila_valle["cantidad_total_pred"])},

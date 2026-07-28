@@ -17,6 +17,7 @@
   --sidebar-border:  rgba(255,255,255,0.08);
   --sidebar-text:    #A6A3C4;
   --sidebar-hover:   rgba(255,255,255,0.06);
+  --mono: 'JetBrains Mono', monospace;
 }
 
 body {
@@ -50,6 +51,30 @@ i[data-lucide] { display: flex; }
   color: var(--gray-mid);
   margin-bottom: 0.75rem;
 }
+
+/* Identidad "landing" aplicada a elementos puntuales del panel:
+   punto que parpadea + texto mono, sobre fondo claro (versión suave
+   del .eyebrow oscuro de la landing pública). */
+.pulse-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  color: var(--teal);
+  background: var(--teal-lt);
+  border: 1px solid rgba(29,158,117,.25);
+  padding: 0.35rem 0.8rem;
+  border-radius: 100px;
+}
+.pulse-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--teal);
+  animation: pulse-dot 1.8s infinite;
+  flex-shrink: 0;
+}
+@keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
 
 /* ══ SIDEBAR ══ */
 .sidebar {
@@ -380,15 +405,19 @@ i[data-lucide] { display: flex; }
 
 .card {
   background: var(--white);
-  border-radius: 14px;
+  border-radius: 18px;
   padding: 1.25rem 1.25rem 1rem;
   border: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  transition: box-shadow 0.15s;
+  transition: box-shadow 0.2s, border-color 0.2s, transform 0.2s;
 }
-.card:hover { box-shadow: 0 4px 16px rgba(83,74,183,0.08); }
+.card:hover {
+  box-shadow: 0 8px 24px rgba(83,74,183,0.12);
+  border-color: rgba(83,74,183,0.35);
+  transform: translateY(-3px);
+}
 
 .card-top {
   display: flex;
@@ -403,8 +432,8 @@ i[data-lucide] { display: flex; }
 }
 
 .card-icon {
-  width: 36px; height: 36px;
-  border-radius: 10px;
+  width: 40px; height: 40px;
+  border-radius: 11px;
   display: flex; align-items: center; justify-content: center;
   flex-shrink: 0;
 }
@@ -415,7 +444,8 @@ i[data-lucide] { display: flex; }
 .card-icon.red    { background: #FDF0EC;           color: #D85A30; }
 
 .card-value {
-  font-size: 1.75rem;
+  font-family: var(--mono);
+  font-size: 1.7rem;
   font-weight: 700;
   color: var(--dark);
   line-height: 1;
@@ -448,10 +478,12 @@ i[data-lucide] { display: flex; }
 
 .chart-card {
   background: var(--white);
-  border-radius: 14px;
+  border-radius: 18px;
   padding: 1.5rem;
   border: 1px solid var(--border);
+  transition: border-color 0.2s;
 }
+.chart-card:hover { border-color: rgba(83,74,183,0.25); }
 
 .chart-header {
   display: flex;
@@ -502,18 +534,19 @@ i[data-lucide] { display: flex; }
 
 .ml-card {
   background: var(--white);
-  border-radius: 14px;
+  border-radius: 16px;
   padding: 1.25rem;
   border: 1px solid var(--border);
   text-decoration: none;
   display: flex;
   align-items: center;
   gap: 1rem;
-  transition: box-shadow 0.15s, border-color 0.15s;
+  transition: box-shadow 0.2s, border-color 0.2s, transform 0.2s;
 }
 .ml-card:hover {
-  box-shadow: 0 4px 16px rgba(83,74,183,0.1);
-  border-color: var(--purple);
+  box-shadow: 0 8px 24px rgba(83,74,183,0.14);
+  border-color: rgba(83,74,183,0.4);
+  transform: translateY(-3px);
 }
 
 .ml-icon {
@@ -653,7 +686,7 @@ i[data-lucide] { display: flex; }
 /* Plan de Preparación */
 .plan-card {
   background: var(--white);
-  border-radius: 14px;
+  border-radius: 18px;
   border: 1px solid var(--border);
   padding: 1.5rem;
   margin-bottom: 1.5rem;
@@ -707,7 +740,7 @@ i[data-lucide] { display: flex; }
   font-weight: 700;
   margin-right: 0.6rem;
 }
-.plan-cantidad { font-weight: 700; text-align: right; }
+.plan-cantidad { font-family: var(--mono); font-weight: 700; text-align: right; }
 .plan-nota {
   font-size: 0.72rem;
   color: var(--gray-mid);
@@ -719,7 +752,7 @@ i[data-lucide] { display: flex; }
 /* Módulo de Confianza Científica */
 .confidence-card {
   background: var(--white);
-  border-radius: 14px;
+  border-radius: 18px;
   border: 1px solid var(--border);
   padding: 1.5rem;
   margin-bottom: 1.5rem;
@@ -749,7 +782,7 @@ i[data-lucide] { display: flex; }
   gap: 1.25rem;
 }
 .gauge-value {
-  font-family: 'Inter', sans-serif;
+  font-family: var(--mono);
   font-weight: 700;
   font-size: 1.9rem;
   fill: var(--dark);
@@ -768,6 +801,7 @@ i[data-lucide] { display: flex; }
   padding: 0.9rem 1rem;
 }
 .deviation-value {
+  font-family: var(--mono);
   font-size: 1.3rem;
   font-weight: 700;
   color: var(--dark);

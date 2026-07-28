@@ -10,6 +10,8 @@ from blueprints.upload import upload_bp
 from blueprints.prediccion import prediccion_bp
 from blueprints.abastecimiento import abastecimiento_bp
 from blueprints.configuracion import configuracion_bp
+from blueprints.main import main_bp
+from blueprints.insights import insights_bp
 
 
 
@@ -34,6 +36,8 @@ def create_app():
     app.register_blueprint(prediccion_bp)
     app.register_blueprint(abastecimiento_bp)
     app.register_blueprint(configuracion_bp)
+    app.register_blueprint(main_bp)
+    app.register_blueprint(insights_bp)
 
     # TOarDO: registr cuando estén listos
     # app.register_blueprint(products_bp)

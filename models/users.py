@@ -1,7 +1,8 @@
 from models import db
 from flask_login import UserMixin
 
-class Usuario(UserMixin,db.Model):
+
+class Usuario(UserMixin, db.Model):
 
     __tablename__ = "usuarios"
 
@@ -18,8 +19,12 @@ class Usuario(UserMixin,db.Model):
         nullable=False
     )
 
-    password_hash = db.Column(
-        db.String(255),
+    # ID del usuario en Supabase Auth (UUID). Ahí vive la contraseña
+    # real, el estado de verificación de email, etc. — esta tabla solo
+    # guarda el perfil local para las relaciones con Venta, ModeloML, etc.
+    supabase_id = db.Column(
+        db.String(64),
+        unique=True,
         nullable=False
     )
 

@@ -1,172 +1,281 @@
 <!DOCTYPE html>
 <html lang="es">
-
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>RestoIQ — Iniciar sesión</title>
-  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="../../static/css/auth.css">
-</head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>RestoIQ — Iniciar sesión</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg:        #0E0C1B;
+    --surface:   #17142A;
+    --surface-2: #1D1934;
+    --border:    rgba(255,255,255,0.08);
+    --purple:    #534AB7;
+    --purple-glow: #8B7FFF;
+    --teal:      #1D9E75;
+    --ink:       #F5F4FB;
+    --muted:     #8B87A8;
+    --error:     #F26D6D;
+    --mono: 'JetBrains Mono', monospace;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    font-family:'Inter',sans-serif;
+    background:var(--bg);
+    color:var(--ink);
+    min-height:100vh;
+    display:flex; align-items:center; justify-content:center;
+    padding:2.5rem 1.25rem;
+    position:relative; overflow-x:hidden;
+  }
+  #networkBg { position:fixed; inset:0; z-index:0; pointer-events:none; }
+  .glow {
+    position:fixed; top:-15%; left:50%; transform:translateX(-50%);
+    width:800px; height:800px; border-radius:50%;
+    background:radial-gradient(circle, rgba(83,74,183,0.22) 0%, rgba(83,74,183,0) 70%);
+    pointer-events:none; z-index:0;
+  }
 
+  .card {
+    position:relative; z-index:1;
+    width:100%; max-width:430px;
+    background:linear-gradient(180deg, var(--surface), var(--surface-2));
+    border:1px solid var(--border); border-radius:20px;
+    padding:2.4rem 2.2rem;
+    animation: rise .7s ease forwards;
+  }
+  @keyframes rise { from{opacity:0; transform:translateY(14px);} to{opacity:1; transform:translateY(0);} }
+
+  .logo { display:flex; align-items:center; justify-content:center; gap:.5rem; font-weight:800; font-size:1.3rem; margin-bottom:1.6rem; }
+  .logo-dot { width:9px; height:9px; border-radius:50%; background:var(--purple-glow); box-shadow:0 0 12px var(--purple-glow); }
+  .logo span { color:var(--purple-glow); }
+
+  h1 { font-size:1.5rem; font-weight:800; text-align:center; letter-spacing:-.01em; }
+  .sub { text-align:center; color:var(--muted); font-size:.9rem; margin-top:.4rem; margin-bottom:1.8rem; }
+
+  .flash {
+    font-size:.85rem; padding:.7rem .9rem; border-radius:10px; margin-bottom:1.2rem;
+    border:1px solid; text-align:center;
+  }
+  .flash--error   { background:rgba(242,109,109,.1); border-color:rgba(242,109,109,.35); color:#FCA5A5; }
+  .flash--success { background:rgba(29,158,117,.1); border-color:rgba(29,158,117,.35); color:#6EE7B7; }
+
+  .field { margin-bottom:1.1rem; }
+  .field label { display:block; font-size:.82rem; font-weight:600; margin-bottom:.4rem; color:var(--ink); }
+  .input-wrap { position:relative; }
+  .input-wrap input {
+    width:100%; padding:.75rem .9rem .75rem 2.5rem;
+    background:rgba(255,255,255,0.04); border:1px solid var(--border); border-radius:10px;
+    color:var(--ink); font-size:.92rem; font-family:'Inter',sans-serif;
+    transition:.15s;
+  }
+  .input-wrap input::placeholder { color:#5C5876; }
+  .input-wrap input:focus { outline:none; border-color:var(--purple-glow); background:rgba(139,127,255,.06); }
+  .input-wrap input.error { border-color:var(--error); }
+  .input-icon {
+    position:absolute; left:.85rem; top:50%; transform:translateY(-50%);
+    color:var(--muted); display:flex;
+  }
+  .toggle-pass {
+    position:absolute; right:.85rem; top:50%; transform:translateY(-50%);
+    background:none; border:none; color:var(--muted); cursor:pointer; display:flex;
+  }
+  .field-error { display:none; font-size:.76rem; color:var(--error); margin-top:.35rem; }
+
+  .terms {
+    display:flex; align-items:flex-start; gap:.55rem;
+    font-size:.82rem; color:var(--muted); margin-bottom:1.3rem; line-height:1.4;
+  }
+  .terms input { margin-top:.2rem; accent-color:var(--purple-glow); }
+  .terms a { color:var(--purple-glow); text-decoration:none; }
+  .terms a:hover { text-decoration:underline; }
+
+  .btn-primary {
+    width:100%; padding:.85rem; border:none; border-radius:10px;
+    background:var(--purple); color:#fff; font-size:.95rem; font-weight:700;
+    cursor:pointer; transition:.2s; position:relative; overflow:hidden;
+  }
+  .btn-primary:hover { background:#645AC9; box-shadow:0 8px 22px rgba(83,74,183,.4); }
+
+  .divider {
+    display:flex; align-items:center; gap:.8rem; margin:1.4rem 0;
+    color:var(--muted); font-size:.78rem; font-family:var(--mono);
+  }
+  .divider::before, .divider::after { content:""; flex:1; height:1px; background:var(--border); }
+
+  .btn-google {
+    display:flex; align-items:center; justify-content:center; gap:.6rem;
+    width:100%; padding:.75rem; background:#fff; border:1px solid #DADCE0; border-radius:10px;
+    color:#3C4043; font-size:.9rem; font-weight:600; text-decoration:none; transition:.15s;
+  }
+  .btn-google:hover { box-shadow:0 1px 6px rgba(0,0,0,.25); }
+
+  .login-link { text-align:center; font-size:.88rem; color:var(--muted); margin-top:1.5rem; }
+  .login-link a { color:var(--purple-glow); text-decoration:none; font-weight:600; }
+  .login-link a:hover { text-decoration:underline; }
+
+  @media (prefers-reduced-motion: reduce) { * { animation-duration:.01ms !important; } }
+</style>
+</head>
 <body>
 
-  <!-- Panel lateral izquierdo -->
-  <aside class="side-panel" aria-hidden="true">
-    <div class="side-brand">
-      <div class="side-icon">
-        <img class="logo-1" src="../../static/restoIQ_logo_pg.PNG" alt="logo RestoIQ">
-      </div>
-    </div>
+<canvas id="networkBg"></canvas>
+<div class="glow"></div>
 
-    <div class="side-content">
-      <p class="side-tagline">Bienvenido de nuevo a RestoIQ</p>
-      <p class="side-desc">Accede a tus dashboards, predicciones y reportes inteligentes para tomar mejores decisiones hoy.</p>
-      <ul class="side-features">
-        <li class="side-feature"><span class="feat-dot"></span>Predicción de ventas con IA</li>
-        <li class="side-feature"><span class="feat-dot"></span>Clasificación de productos por demanda</li>
-        <li class="side-feature"><span class="feat-dot"></span>Alertas inteligentes de inventario</li>
-        <li class="side-feature"><span class="feat-dot"></span>Dashboards interactivos en tiempo real</li>
-      </ul>
-    </div>
+<div class="card">
+  <a href="/" class="logo" style="text-decoration:none; color:var(--ink);">
+    <span class="logo-dot"></span>Resto<span>IQ</span>
+  </a>
+  <h1>Bienvenido de nuevo</h1>
+  <p class="sub">Ingresa a tu cuenta de RestoIQ</p>
 
-    <p class="side-footer">© 2026 RestoIQ · Restaurant Intelligence Platform</p>
-  </aside>
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        <div class="flash flash--{{ category }}">{{ message }}</div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
 
-  <!-- Panel de formulario -->
-  <main class="form-panel">
-    <div class="form-card">
+  <form id="loginForm" method="POST" action="{{ url_for('auth.login') }}" novalidate>
 
-      <!-- Logo solo visible en móvil -->
-      <div class="mobile-logo" aria-hidden="true">
-        <div class="mobile-icon">
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
-            <line x1="8" y1="3" x2="8" y2="9" stroke="white" stroke-width="1.8" stroke-linecap="round"/>
-            <line x1="12" y1="3" x2="12" y2="9" stroke="white" stroke-width="1.8" stroke-linecap="round"/>
-            <line x1="16" y1="3" x2="16" y2="9" stroke="white" stroke-width="1.8" stroke-linecap="round"/>
-            <path d="M8 9 Q10 12 10 14 L10 20" fill="none" stroke="white" stroke-width="1.8" stroke-linecap="round"/>
-            <polyline points="14,18 16,14 18,16 21,10" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            <circle cx="21" cy="10" r="1.5" fill="white"/>
+    <div class="field">
+      <label for="email">Correo electrónico</label>
+      <div class="input-wrap">
+        <span class="input-icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+            <polyline points="22,6 12,13 2,6"/>
           </svg>
-        </div>
-        <p class="mobile-name">Resto<span class="iq">IQ</span></p>
-        <p class="mobile-sub">Predict · Optimize · Serve</p>
+        </span>
+        <input type="email" id="email" name="email" placeholder="tu@email.com" autocomplete="email" required />
       </div>
-
-      <header class="form-header">
-        <h1 class="form-title">Iniciar sesión</h1>
-        <p class="form-subtitle">Ingresa tus credenciales para continuar</p>
-      </header>
-
-      <!-- Mensajes flash de Flask -->
-      {% with messages = get_flashed_messages(with_categories=true) %}
-        {% if messages %}
-          {% for category, message in messages %}
-            <div class="flash flash--{{ category }}">{{ message }}</div>
-          {% endfor %}
-        {% endif %}
-      {% endwith %}
-
-      <form id="loginForm" method="POST" action="/login" novalidate>
-
-        <div class="field">
-          <label for="email">Correo electrónico</label>
-          <div class="input-wrap">
-            <span class="input-icon">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
-                <polyline points="22,6 12,13 2,6"/>
-              </svg>
-            </span>
-            <input type="email" id="email" name="email" placeholder="tu@email.com" autocomplete="email" required />
-          </div>
-          <p class="field-error" id="email-error">Ingresa un correo válido</p>
-        </div>
-
-        <div class="field">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.4rem;">
-            <label for="password" style="margin-bottom:0;">Contraseña</label>
-            <a href="#" class="forgot-link">¿Olvidaste tu contraseña?</a>
-          </div>
-          <div class="input-wrap">
-            <span class="input-icon">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-                <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-              </svg>
-            </span>
-            <input type="password" id="password" name="password" placeholder="Tu contraseña" autocomplete="current-password" required />
-            <button type="button" class="toggle-pass" id="togglePass" aria-label="Mostrar contraseña">
-              <svg id="eyeIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-                <circle cx="12" cy="12" r="3"/>
-              </svg>
-            </button>
-          </div>
-          <p class="field-error" id="password-error">Ingresa tu contraseña</p>
-        </div>
-
-        <button type="submit" class="btn-primary" style="margin-top:0.5rem;">
-          <span class="btn-shine"></span>
-          Iniciar sesión
-        </button>
-
-      </form>
-
-      <div class="divider">o</div>
-
-      <p class="login-link">¿No tienes cuenta? <a href="/register">Regístrate gratis</a></p>
-
+      <p class="field-error" id="email-error">Ingresa un correo válido</p>
     </div>
-  </main>
 
-  <script>
-    // Toggle contraseña
-    const togglePass = document.getElementById('togglePass');
-    const passInput  = document.getElementById('password');
-    const eyeIcon    = document.getElementById('eyeIcon');
+    <div class="field">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:.4rem;">
+        <label for="password" style="margin-bottom:0;">Contraseña</label>
+        <a href="{{ url_for('auth.forgot_password') }}" style="font-size:.8rem; color:var(--purple-glow); text-decoration:none;">¿Olvidaste tu contraseña?</a>
+      </div>
+      <div class="input-wrap">
+        <span class="input-icon">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+          </svg>
+        </span>
+        <input type="password" id="password" name="password" placeholder="Tu contraseña" autocomplete="current-password" required />
+        <button type="button" class="toggle-pass" data-target="password">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+          </svg>
+        </button>
+      </div>
+      <p class="field-error" id="password-error">Ingresa tu contraseña</p>
+    </div>
 
-    togglePass.addEventListener('click', () => {
-      const show = passInput.type === 'password';
-      passInput.type = show ? 'text' : 'password';
-      eyeIcon.innerHTML = show
-        ? '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>'
-        : '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>';
-    });
+    <button type="submit" class="btn-primary">Iniciar sesión</button>
+  </form>
 
-    // Validación al enviar
-    document.getElementById('loginForm').addEventListener('submit', (e) => {
-      e.preventDefault();
-      let valid = true;
+  <div class="divider">o</div>
 
-      const fields = [
-        { id: 'email',    errId: 'email-error',    check: v => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v) },
-        { id: 'password', errId: 'password-error', check: v => v.length > 0 },
-      ];
+  <a href="{{ url_for('auth.google_login') }}" class="btn-google">
+    <svg width="18" height="18" viewBox="0 0 48 48">
+      <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.6 6.5 29.6 4.5 24 4.5 12.9 4.5 4 13.4 4 24.5s8.9 20 20 20 20-8.9 20-20c0-1.4-.1-2.7-.4-4z"/>
+      <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.6 15.6 18.9 12.5 24 12.5c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.6 6.5 29.6 4.5 24 4.5c-7.6 0-14.2 4.3-17.7 10.2z"/>
+      <path fill="#4CAF50" d="M24 44.5c5.5 0 10.4-1.9 14.3-5.1l-6.6-5.5c-2.1 1.5-4.8 2.4-7.7 2.4-5.3 0-9.7-3.3-11.3-8l-6.6 5.1C9.7 40 16.3 44.5 24 44.5z"/>
+      <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.1-4.1 5.4l6.6 5.5C41.5 35.8 44 30.5 44 24.5c0-1.4-.1-2.7-.4-4z"/>
+    </svg>
+    Continuar con Google
+  </a>
 
-      fields.forEach(({ id, errId, check }) => {
-        const input = document.getElementById(id);
-        const err   = document.getElementById(errId);
-        const ok    = check(input.value);
-        input.classList.toggle('error', !ok);
-        err.style.display = ok ? 'none' : 'block';
-        if (!ok) valid = false;
-      });
+  <p class="login-link">¿No tienes cuenta? <a href="{{ url_for('auth.register') }}">Regístrate gratis</a></p>
+</div>
 
-      if (valid) {
-        e.target.submit();
+<script>
+  // ── Fondo de red de nodos, mismo que el landing ──
+  (function () {
+    const canvas = document.getElementById('networkBg');
+    const ctx = canvas.getContext('2d');
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let w, h, nodes;
+
+    function resize() {
+      w = canvas.width = window.innerWidth;
+      h = canvas.height = window.innerHeight;
+      const densidad = Math.min(140, Math.floor((w * h) / 9000));
+      nodes = Array.from({ length: densidad }, () => ({
+        x: Math.random() * w, y: Math.random() * h,
+        vx: (Math.random() - 0.5) * 0.3, vy: (Math.random() - 0.5) * 0.3,
+        r: Math.random() * 2.2 + 1.4,
+      }));
+    }
+    function tick() {
+      ctx.clearRect(0, 0, w, h);
+      const DIST = 150;
+      for (let i = 0; i < nodes.length; i++) {
+        const n = nodes[i];
+        if (!reduceMotion) {
+          n.x += n.vx; n.y += n.vy;
+          if (n.x < 0 || n.x > w) n.vx *= -1;
+          if (n.y < 0 || n.y > h) n.vy *= -1;
+        }
+        for (let j = i + 1; j < nodes.length; j++) {
+          const m = nodes[j];
+          const dx = n.x - m.x, dy = n.y - m.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < DIST) {
+            ctx.strokeStyle = `rgba(130,150,255,${(1 - dist / DIST) * 0.5})`;
+            ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(n.x, n.y); ctx.lineTo(m.x, m.y); ctx.stroke();
+          }
+        }
       }
-    });
+      for (const n of nodes) {
+        ctx.fillStyle = '#7FA8FF'; ctx.shadowColor = '#7FA8FF'; ctx.shadowBlur = 6;
+        ctx.beginPath(); ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2); ctx.fill();
+        ctx.shadowBlur = 0;
+      }
+      if (!reduceMotion) requestAnimationFrame(tick);
+    }
+    resize(); tick();
+    window.addEventListener('resize', resize);
+  })();
 
-    // Quitar error al escribir
-    document.querySelectorAll('input').forEach(input => {
-      input.addEventListener('input', () => {
-        input.classList.remove('error');
-        const err = document.getElementById(input.id + '-error');
-        if (err) err.style.display = 'none';
-      });
+  document.querySelectorAll('.toggle-pass').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const input = document.getElementById(btn.dataset.target);
+      input.type = input.type === 'password' ? 'text' : 'password';
     });
-  </script>
+  });
+
+  document.getElementById('loginForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    let valid = true;
+    const fields = [
+      { id: 'email', errId: 'email-error', check: v => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v) },
+      { id: 'password', errId: 'password-error', check: v => v.length > 0 },
+    ];
+    fields.forEach(({ id, errId, check }) => {
+      const input = document.getElementById(id);
+      const ok = check(input.value);
+      input.classList.toggle('error', !ok);
+      document.getElementById(errId).style.display = ok ? 'none' : 'block';
+      if (!ok) valid = false;
+    });
+    if (valid) e.target.submit();
+  });
+
+  document.querySelectorAll('input').forEach(input => {
+    input.addEventListener('input', () => {
+      input.classList.remove('error');
+      const err = document.getElementById(input.id + '-error');
+      if (err) err.style.display = 'none';
+    });
+  });
+</script>
 
 </body>
 </html>

@@ -1,0 +1,224 @@
+{% extends "base.html" %}
+
+{% block titulo %}Insights{% endblock %}
+{% block titulo_pagina %}Insights{% endblock %}
+{% block subtitulo_pagina %}Decisiones de negocio, no más métricas · RestoIQ{% endblock %}
+
+{% block estilos %}
+<style>
+  .layout-insights { display: grid; grid-template-columns: 1fr 300px; gap: 1.5rem; align-items: start; }
+  @media (max-width: 900px) { .layout-insights { grid-template-columns: 1fr; } }
+
+  .panel-lateral {
+    background: var(--white); border: 1px solid var(--border); border-radius: 16px;
+    padding: 1.25rem; position: sticky; top: 1.5rem;
+  }
+  .panel-lateral h4 { font-size: .78rem; text-transform: uppercase; letter-spacing: .05em; color: var(--gray-mid); margin-bottom: .8rem; }
+  .panel-resumen-fila { display: flex; justify-content: space-between; align-items: center; padding: .4rem 0; font-size: .86rem; }
+  .panel-resumen-num { font-family: var(--mono); font-weight: 700; font-size: 1.1rem; }
+  .panel-divider { height: 1px; background: var(--border); margin: .8rem 0; }
+  .panel-chip { display: inline-block; font-size: .74rem; background: var(--gray-lt); color: var(--gray-mid); padding: .25rem .6rem; border-radius: 7px; margin: 2px; }
+  .panel-urgente { font-size: .82rem; color: var(--dark); background: #FEF2F2; border-radius: 10px; padding: .7rem .8rem; margin-top: .5rem; }
+
+  .insight-card {
+    background: var(--white); border: 1px solid var(--border); border-radius: 16px;
+    padding: 1.25rem 1.5rem; margin-bottom: 1rem;
+    border-left: 4px solid var(--border);
+    transition: box-shadow .2s, transform .2s;
+  }
+  .insight-card:hover { box-shadow: 0 8px 20px rgba(83,74,183,.1); transform: translateY(-2px); }
+  .insight-card.riesgo        { border-left-color: #DC2626; }
+  .insight-card.oportunidad   { border-left-color: #16A34A; }
+  .insight-card.informativa   { border-left-color: #2563EB; }
+
+  .insight-top { display: flex; align-items: center; gap: .6rem; margin-bottom: .5rem; flex-wrap: wrap; }
+  .insight-icon { width: 34px; height: 34px; border-radius: 9px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .insight-icon i { width: 17px; height: 17px; }
+
+  .tag-tipo {
+    font-family: var(--mono); font-size: .68rem; font-weight: 700;
+    padding: .2rem .6rem; border-radius: 999px; text-transform: uppercase; letter-spacing: .03em;
+  }
+  .tag-Predictivo    { background: var(--purple-lt); color: var(--purple); }
+  .tag-Operativo     { background: var(--teal-lt);   color: var(--teal); }
+  .tag-Cruzado       { background: linear-gradient(90deg, var(--purple-lt), var(--teal-lt)); color: var(--purple); }
+  .tag-Confiabilidad { background: #FEF3E8; color: #E99B2F; }
+
+  .tag-polaridad { font-size: .68rem; font-weight: 700; padding: .2rem .55rem; border-radius: 999px; }
+  .tag-polaridad.riesgo      { background: #FEE2E2; color: #B91C1C; }
+  .tag-polaridad.oportunidad { background: #DCFCE7; color: #15803D; }
+  .tag-polaridad.informativa { background: #DBEAFE; color: #1D4ED8; }
+
+  .tag-prioridad { font-size: .7rem; font-weight: 700; padding: .2rem .6rem; border-radius: 999px; }
+  .tag-prioridad.Alta  { background: #FEE2E2; color: #B91C1C; }
+  .tag-prioridad.Media { background: #FEF3C7; color: #92400E; }
+  .tag-prioridad.Baja  { background: #DCFCE7; color: #15803D; }
+
+  .insight-titulo { font-size: 1.02rem; font-weight: 700; color: var(--dark); margin: .3rem 0 .6rem; }
+
+  .insight-seccion { margin-bottom: .55rem; }
+  .insight-label { font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--gray-mid); margin-bottom: .15rem; }
+  .insight-texto { font-size: .87rem; color: var(--dark); line-height: 1.5; }
+  .insight-accion-texto { font-size: .87rem; font-weight: 600; color: var(--purple); }
+  .insight-impacto-texto { font-size: .82rem; color: var(--teal); font-style: italic; }
+
+  .insight-evidencia { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .6rem; }
+  .chip-evidencia { font-size: .74rem; background: var(--gray-lt); color: var(--gray-mid); padding: .25rem .6rem; border-radius: 7px; }
+
+  .insight-vacio { text-align: center; padding: 3rem 1.5rem; color: var(--gray-mid); }
+  .spinner-insights {
+    width: 40px; height: 40px; border: 4px solid var(--gray-lt);
+    border-top-color: var(--purple); border-radius: 50%;
+    margin: 0 auto; animation: girar-insights .8s linear infinite;
+  }
+  @keyframes girar-insights { to { transform: rotate(360deg); } }
+</style>
+{% endblock %}
+
+{% block contenido %}
+<div class="aviso" style="background:#EFF6FF;color:#1E40AF;padding:.8rem 1rem;border-radius:10px;font-size:.85rem;margin-bottom:1rem;">
+  Este módulo no ejecuta ningún modelo nuevo — interpreta lo que Predicción de Demanda y
+  Clasificación de Prioridad ya calcularon, y lo traduce en decisiones concretas.
+</div>
+
+<div id="estadoInicial" class="insight-vacio" style="background:var(--white);border:1px solid var(--border);border-radius:16px;">
+  <h3 style="color:var(--dark);margin-bottom:.5rem;">Generar insights de hoy</h3>
+  <p style="max-width:420px;margin:0 auto 1.2rem;">Cruza tu predicción de demanda con la prioridad de abastecimiento para darte decisiones concretas, no más números.</p>
+  <button class="btn-upload" style="margin:0 auto;" onclick="generarInsights()">Generar insights</button>
+</div>
+
+<div id="estadoCargando" style="display:none;text-align:center;padding:3rem;">
+  <div class="spinner-insights"></div>
+  <p style="margin-top:1rem;color:var(--gray-mid);font-weight:600;">Cruzando ambos modelos...</p>
+</div>
+
+<div id="estadoError" style="display:none;" class="insight-card riesgo">
+  <p id="mensajeError" style="color:var(--dark);"></p>
+</div>
+
+<div id="contenidoInsights" style="display:none;">
+  <div class="layout-insights">
+    <div id="listaInsights"></div>
+
+    <div class="panel-lateral">
+      <h4>Resumen</h4>
+      <div id="panelResumen"></div>
+      <div class="panel-divider"></div>
+      <h4>Categorías afectadas</h4>
+      <div id="panelCategorias"></div>
+      <div id="panelUrgenteWrap"></div>
+    </div>
+  </div>
+
+  <div style="text-align:right;margin-top:1rem;">
+    <button class="btn-secundario" style="border:1px solid var(--border);background:var(--white);border-radius:9px;padding:.5rem .9rem;font-size:.82rem;font-weight:600;cursor:pointer;" onclick="generarInsights()">
+      Regenerar
+    </button>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const ICONOS_TIPO = {Predictivo: "trending-up", Operativo: "package", Cruzado: "zap", Confiabilidad: "alert-triangle"};
+
+async function generarInsights() {
+  document.getElementById("estadoInicial").style.display = "none";
+  document.getElementById("estadoError").style.display = "none";
+  document.getElementById("contenidoInsights").style.display = "none";
+  document.getElementById("estadoCargando").style.display = "block";
+
+  try {
+    const res = await fetch("/insights/generar", {method: "POST"});
+    const data = await res.json();
+    document.getElementById("estadoCargando").style.display = "none";
+
+    if (!data.ok) {
+      document.getElementById("estadoError").style.display = "block";
+      document.getElementById("mensajeError").textContent = data.error;
+      return;
+    }
+
+    pintarInsights(data.insights);
+    pintarPanel(data.resumen);
+    document.getElementById("contenidoInsights").style.display = "block";
+  } catch (e) {
+    document.getElementById("estadoCargando").style.display = "none";
+    document.getElementById("estadoError").style.display = "block";
+    document.getElementById("mensajeError").textContent = "Error al generar insights: " + e.message;
+  }
+}
+
+function pintarPanel(resumen) {
+  document.getElementById("panelResumen").innerHTML = `
+    <div class="panel-resumen-fila"><span>Total decisiones</span><span class="panel-resumen-num">${resumen.total}</span></div>
+    <div class="panel-resumen-fila"><span>🔴 Críticas</span><span class="panel-resumen-num">${resumen.criticas}</span></div>
+    <div class="panel-resumen-fila"><span>🟢 Oportunidades</span><span class="panel-resumen-num">${resumen.oportunidades}</span></div>
+    <div class="panel-resumen-fila"><span>🔵 Informativas</span><span class="panel-resumen-num">${resumen.informativas}</span></div>
+  `;
+
+  const cats = resumen.categorias_afectadas || [];
+  document.getElementById("panelCategorias").innerHTML = cats.length
+    ? cats.map(c => `<span class="panel-chip">${c}</span>`).join("")
+    : `<span style="font-size:.8rem;color:var(--gray-mid);">Ninguna en particular</span>`;
+
+  const urgenteWrap = document.getElementById("panelUrgenteWrap");
+  urgenteWrap.innerHTML = resumen.accion_urgente
+    ? `<div class="panel-divider"></div><h4>Acción más urgente</h4><div class="panel-urgente">${resumen.accion_urgente}</div>`
+    : "";
+}
+
+function pintarInsights(insights) {
+  const cont = document.getElementById("listaInsights");
+
+  if (!insights.length) {
+    cont.innerHTML = `<div class="insight-vacio">No hay patrones con evidencia suficiente para generar insights todavía.</div>`;
+    return;
+  }
+
+  cont.innerHTML = insights.map(ins => {
+    const chips = [];
+    const ev = ins.evidencia || {};
+    if (ev.productos) ev.productos.forEach(p => chips.push(p));
+    if (ev.categoria) chips.push("Categoría: " + ev.categoria);
+    if (ev.fecha) chips.push("Fecha: " + ev.fecha);
+    if (ev.pct_sobre_promedio != null) chips.push(`+${ev.pct_sobre_promedio}% sobre promedio`);
+    if (ev.wape != null) chips.push(`WAPE: ${ev.wape}%`);
+    if (ev.pct_confianza_baja != null) chips.push(`${ev.pct_confianza_baja}% confianza baja`);
+
+    return `
+      <div class="insight-card ${ins.polaridad}">
+        <div class="insight-top">
+          <div class="insight-icon tag-${ins.tipo}" style="background:transparent;">
+            <i data-lucide="${ICONOS_TIPO[ins.tipo] || 'circle'}"></i>
+          </div>
+          <span class="tag-tipo tag-${ins.tipo}">${ins.tipo}</span>
+          <span class="tag-polaridad ${ins.polaridad}">${ins.polaridad}</span>
+          <span class="tag-prioridad ${ins.prioridad}">${ins.prioridad}</span>
+        </div>
+        <p class="insight-titulo">${ins.titulo}</p>
+
+        <div class="insight-seccion">
+          <div class="insight-label">¿Por qué?</div>
+          <div class="insight-texto">${ins.descripcion}</div>
+        </div>
+        <div class="insight-seccion">
+          <div class="insight-label">¿Qué hacer?</div>
+          <div class="insight-accion-texto">${ins.accion}</div>
+        </div>
+        ${ins.impacto ? `
+        <div class="insight-seccion">
+          <div class="insight-label">Impacto esperado</div>
+          <div class="insight-impacto-texto">${ins.impacto}</div>
+        </div>` : ""}
+
+        <div class="insight-evidencia">
+          ${chips.map(c => `<span class="chip-evidencia">${c}</span>`).join("")}
+        </div>
+      </div>`;
+  }).join("");
+
+  lucide.createIcons();
+}
+</script>
+{% endblock %}

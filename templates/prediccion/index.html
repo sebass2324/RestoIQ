@@ -19,48 +19,6 @@
     --text-muted:    var(--gray-mid);
   }
 
-  /* ── Tabs de objetivo de análisis ── */
-  .tabs-row {
-    display: flex;
-    gap: .5rem;
-    margin-bottom: 1.25rem;
-    flex-wrap: wrap;
-  }
-  .tab-btn {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: .55rem 1.1rem;
-    border-radius: 10px;
-    border: 1px solid var(--border);
-    background: var(--surface);
-    color: var(--text-secondary);
-    font-size: .85rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all .15s;
-  }
-  .tab-btn i { width: 15px; height: 15px; }
-  .tab-btn.active {
-    background: var(--primary);
-    color: #fff;
-    border-color: var(--primary);
-  }
-  .tab-btn:not(.active):hover { border-color: var(--primary); color: var(--primary); }
-
-  .abastecimiento-nota {
-    display: flex;
-    align-items: flex-start;
-    gap: 8px;
-    background: #FEF3E8;
-    color: #92400e;
-    font-size: .8rem;
-    padding: .75rem 1rem;
-    border-radius: 10px;
-    margin-bottom: 1rem;
-  }
-  .abastecimiento-nota i { width: 16px; height: 16px; flex-shrink: 0; margin-top: 1px; }
-
   /* ── Grid principal ── */
   .pred-grid {
     display: grid;
@@ -79,11 +37,17 @@
   .stat-card {
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 12px;
+    border-radius: 16px;
     padding: 1.25rem 1.5rem;
     display: flex;
     flex-direction: column;
     gap: .35rem;
+    transition: box-shadow .2s, border-color .2s, transform .2s;
+  }
+  .stat-card:hover {
+    box-shadow: 0 8px 22px rgba(83,74,183,.1);
+    border-color: rgba(83,74,183,.3);
+    transform: translateY(-2px);
   }
   .stat-card .stat-label {
     font-size: .75rem;
@@ -93,6 +57,7 @@
     letter-spacing: .05em;
   }
   .stat-card .stat-value {
+    font-family: var(--mono);
     font-size: 1.75rem;
     font-weight: 700;
     color: var(--text-primary);
@@ -198,7 +163,7 @@
   .section-card {
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 12px;
+    border-radius: 16px;
     padding: 1.25rem 1.5rem;
   }
   .section-card h3 {
@@ -258,6 +223,41 @@
   .dia-semana  { background: #f0fdf4; color: #166534; }
   .dia-feriado { background: #fef9c3; color: #854d0e; }
 
+  /* ── Tabla en acordeón (agrupada por producto) ── */
+  .acordeon-tabla { display: flex; flex-direction: column; gap: .6rem; }
+  .acordeon-item {
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    overflow: hidden;
+    transition: border-color .2s;
+  }
+  .acordeon-item:hover { border-color: rgba(83,74,183,.3); }
+  .acordeon-cabecera {
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+    padding: .8rem 1.1rem;
+    cursor: pointer;
+    list-style: none;
+    transition: background .15s;
+  }
+  .acordeon-cabecera::-webkit-details-marker { display: none; }
+  .acordeon-cabecera:hover { background: var(--bg); }
+  .acordeon-flecha { width: 15px; height: 15px; color: var(--text-muted); transition: transform .2s; flex-shrink: 0; }
+  details[open] > .acordeon-cabecera .acordeon-flecha { transform: rotate(90deg); }
+  .acordeon-producto { font-weight: 600; font-size: .88rem; color: var(--text-primary); min-width: 160px; }
+  .acordeon-total {
+    font-family: var(--mono);
+    font-size: .82rem;
+    font-weight: 700;
+    color: var(--primary);
+    margin-left: auto;
+    white-space: nowrap;
+  }
+  .acordeon-tabla-interna { background: var(--bg); }
+  .acordeon-tabla-interna th { padding: .45rem 1.1rem; }
+  .acordeon-tabla-interna td { padding: .45rem 1.1rem; border-bottom: 1px solid var(--border); }
+
   /* ── Top productos ── */
   .top-prod-list { display: flex; flex-direction: column; gap: .6rem; }
   .top-prod-item {
@@ -304,15 +304,24 @@
 
   /* ── Calidad del modelo: 2 estados ── */
   .badge-confiabilidad {
-    display: inline-block;
-    font-size: .72rem;
-    font-weight: 700;
-    padding: .25rem .8rem;
+    display: inline-flex;
+    align-items: center;
+    gap: .5rem;
+    font-family: var(--mono);
+    font-size: .76rem;
+    font-weight: 600;
+    padding: .35rem .9rem;
     border-radius: 999px;
     letter-spacing: .02em;
   }
-  .badge-baja { background: #fef3c7; color: #92400e; }
-  .badge-alta { background: #d1fae5; color: #047857; }
+  .badge-baja { background: #fef3c7; color: #92400e; border: 1px solid rgba(146,64,14,.2); }
+  .badge-alta { background: var(--teal-lt); color: var(--teal); border: 1px solid rgba(29,158,117,.25); }
+  .badge-confiabilidad .pulse-dot-inline {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: currentColor;
+    animation: pulse-dot 1.8s infinite;
+    flex-shrink: 0;
+  }
 
   /* Estado A: historial insuficiente */
   .calidad-insuficiente-card {
@@ -363,8 +372,9 @@
   .calidad-titular {
     text-align: center;
     padding: 1.5rem 1rem 1.75rem;
-    background: linear-gradient(135deg, rgba(99,102,241,.06), rgba(5,150,105,.06));
-    border-radius: 12px;
+    background: linear-gradient(135deg, rgba(83,74,183,.06), rgba(29,158,117,.06));
+    border: 1px solid var(--border);
+    border-radius: 16px;
     margin-bottom: 1.25rem;
   }
   .calidad-titular-label {
@@ -374,13 +384,21 @@
     margin: .7rem 0 .3rem;
   }
   .calidad-titular-numero {
-    font-family: 'Playfair Display', serif;
+    font-family: var(--mono);
     font-size: 2.6rem;
     font-weight: 700;
     line-height: 1.1;
-    color: #047857;
+    background: linear-gradient(90deg, var(--purple-glow, var(--primary)), var(--teal));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
   }
-  .calidad-titular-numero.numero-negativo { color: #dc2626; }
+  .calidad-titular-numero.numero-negativo {
+    background: none;
+    -webkit-background-clip: initial;
+    background-clip: initial;
+    color: #dc2626;
+  }
   .calidad-titular-sub {
     font-size: .8rem;
     color: var(--text-muted);
@@ -410,15 +428,23 @@
   .pilar2-grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 1.25rem; }
   @media (max-width: 900px) { .pilar2-grid { grid-template-columns: 1fr; } }
   .calidad-secundario {
-    background: var(--bg);
-    border-radius: 10px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
     padding: 1rem;
     text-align: center;
+    transition: box-shadow .2s, border-color .2s, transform .2s;
+  }
+  .calidad-secundario:hover {
+    box-shadow: 0 8px 20px rgba(83,74,183,.1);
+    border-color: rgba(83,74,183,.3);
+    transform: translateY(-2px);
   }
   .calidad-sec-valor {
+    font-family: var(--mono);
     font-size: 1.5rem;
     font-weight: 700;
-    color: #047857;
+    color: var(--teal);
   }
   .calidad-sec-label {
     font-size: .8rem;
@@ -524,23 +550,11 @@
 
 {% block contenido %}
 
-<!-- ── Pestañas: Demanda / Plan de abastecimiento ──
-     "Ingresos" se eliminó — este sistema no muestra cálculos
-     monetarios como eje principal. "Inventario" se renombró a "Plan
-     de abastecimiento": el cálculo (demanda + margen de seguridad
-     estadístico) es el mismo, pero el nombre ya no sugiere que el
-     sistema gestiona existencias/stock, algo que explícitamente no
-     hace. Si un usuario tenía configurado objetivo_analisis="ingresos"
-     de antes del rediseño, cae a "demanda" por defecto. -->
-{% set modo_inicial = "abastecimiento" if config.objetivo_analisis == "inventario" else "demanda" %}
-<div class="tabs-row" id="tabsRow">
-  <button class="tab-btn {% if modo_inicial == 'demanda' %}active{% endif %}" data-modo="demanda">
-    <i data-lucide="package"></i> Predicción de demanda
-  </button>
-  <button class="tab-btn {% if modo_inicial == 'abastecimiento' %}active{% endif %}" data-modo="abastecimiento">
-    <i data-lucide="boxes"></i> Plan de abastecimiento
-  </button>
-</div>
+<!-- Se eliminó la pestaña "Plan de abastecimiento": mostraba el mismo
+     ranking de productos por demanda total que ya muestra "Productos
+     a preparar" más abajo, sin agregar nada — esa tarjeta además
+     incluye el badge ALTO/MEDIO/BAJO que la pestaña no tenía. La
+     prioridad real (otro modelo, otra pregunta) vive en /abastecimiento. -->
 
 <!-- ── Panel de control ──
      El horizonte ya NO se selecciona aquí — es el que el usuario fijó
@@ -642,7 +656,9 @@
   <!-- Estado B: validado con walk-forward — 3 pilares -->
   <div id="calidadEstadoB" style="display:none;">
     <div class="calidad-titular">
-      <span class="badge-confiabilidad badge-alta" id="badgeConfiabilidadAlta">Confiabilidad alta</span>
+      <span class="badge-confiabilidad badge-alta" id="badgeConfiabilidadAlta">
+        <span class="pulse-dot-inline"></span>Confiabilidad alta
+      </span>
       <p class="calidad-titular-label" id="txtTitularLabel"></p>
       <p class="calidad-titular-numero" id="txtTitularNumero"></p>
       <p class="calidad-titular-sub" id="txtTitularSub"></p>
@@ -691,15 +707,14 @@
       </div>
     </div>
 
-    <!-- Pilar 2: dispersión Real vs. Predicho + distribución de errores -->
-    <div class="pilar-bloque">
+    <!-- Pilar 2: Real vs. Predicho del modelo GANADOR (matplotlib/seaborn) -->
+    <div class="pilar-bloque" id="pilarRegresionLineal" style="display:none;">
       <p class="pilar-numero">2</p>
       <div>
-        <p class="calidad-chart-title">¿Qué tan cerca predice de la realidad?</p>
-        <p class="calidad-chart-sub">Cada punto es una predicción real del holdout. Sobre la línea = exacto; encima = sobreestima; debajo = subestima.</p>
-        <div class="chart-wrap" style="height:260px">
-          <canvas id="chartScatter"></canvas>
-        </div>
+        <p class="calidad-chart-title" id="tituloGraficoGanador">¿Qué tan cerca predice de la realidad?</p>
+        <p class="calidad-chart-sub">Ajuste con banda de confianza al 95% sobre una muestra del holdout — el modelo que realmente se usa.</p>
+        <img id="imgRegresionLineal" src="" alt="Gráfico Real vs. Predicho"
+             style="width:100%;max-width:520px;border-radius:10px;margin-top:.5rem;">
       </div>
     </div>
 
@@ -719,22 +734,6 @@
   <div class="empty-state" id="calidadCargando"><p>Cargando métricas...</p></div>
 </div>
 
-<!-- ── Vista: Plan de abastecimiento (alternativa al gráfico+tabla) ── -->
-<div class="section-card" id="abastecimientoSection" style="display:none;margin-bottom:1.5rem;">
-  <h3><i data-lucide="boxes" style="width:16px;height:16px;color:var(--primary)"></i> Cantidad total sugerida por producto</h3>
-  <div class="abastecimiento-nota">
-    <i data-lucide="info"></i>
-    Esto es tu demanda estimada para el periodo, con un margen adicional de seguridad estadístico.
-    Úsalo como referencia de cuánto preparar o comprar — se basa solo en tu historial de ventas y
-    la confiabilidad del modelo, no conoce ni reemplaza tu control de existencias.
-  </div>
-  <div id="abastecimientoWrap">
-    <div class="empty-state">
-      <i data-lucide="boxes"></i>
-      <p>Cargando la sugerencia...</p>
-    </div>
-  </div>
-</div>
 
 <!-- ── Tabla detallada por producto y día ── -->
 <div class="section-card">
@@ -747,6 +746,16 @@
       </button>
     </span>
   </h3>
+  <div style="display:flex;gap:.6rem;margin-bottom:1rem;flex-wrap:wrap;">
+    <input type="text" id="buscarProducto" placeholder="Buscar producto..."
+           style="flex:1;min-width:180px;border:1px solid var(--border);border-radius:8px;padding:.5rem .75rem;font-size:.85rem;">
+    <select id="filtroDiaTabla"
+            style="border:1px solid var(--border);border-radius:8px;padding:.5rem .75rem;font-size:.85rem;">
+      <option value="">Todos los días</option>
+      <option value="semana">Días de semana</option>
+      <option value="finde">Fin de semana</option>
+    </select>
+  </div>
   <div id="tablaWrap">
     <div class="empty-state">
       <i data-lucide="table"></i>
@@ -764,31 +773,9 @@
 const diasSeleccionados = {{ config.horizonte_dias if config else 7 }};
 let datosPrediccion   = null;
 let chartInstance     = null;
-let modoActivo        = "{{ modo_inicial }}";
 
-// ── Pestañas: Demanda / Plan de abastecimiento ────────────
-// Cambiar de pestaña NO vuelve a pedir datos al backend — reusa el
-// mismo JSON ya recibido y solo cambia qué se enfatiza/muestra.
-document.querySelectorAll(".tab-btn").forEach(btn => {
-  btn.addEventListener("click", () => {
-    document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
-    btn.classList.add("active");
-    modoActivo = btn.dataset.modo;
-    aplicarModo();
-    if (datosPrediccion) {
-      renderChart(datosPrediccion.diario);
-      renderTabla(datosPrediccion.por_producto);
-      if (modoActivo === "abastecimiento") renderAbastecimiento(datosPrediccion.por_producto);
-    }
-  });
-});
-
-function aplicarModo() {
-  const esAbastecimiento = modoActivo === "abastecimiento";
-  document.querySelector(".pred-grid-wide").style.display = esAbastecimiento ? "none" : "grid";
-  document.getElementById("abastecimientoSection").style.display = esAbastecimiento ? "block" : "none";
-}
-aplicarModo();
+document.getElementById("buscarProducto").addEventListener("input", aplicarFiltroTabla);
+document.getElementById("filtroDiaTabla").addEventListener("change", aplicarFiltroTabla);
 
 // ── Cargar predicción (automático al entrar, y también manual) ──
 async function cargarPrediccion() {
@@ -851,14 +838,12 @@ document.getElementById("btnReentrenar").addEventListener("click", async () => {
 
 // ── Render principal ──────────────────────────────────────
 function renderTodo(data) {
-  aplicarModo();
   renderBadge(data.estrategia);
   renderStats(data);
   renderChart(data.diario);
   renderTopProductos(data.resumen.top_5_productos, data.niveles_producto);
   renderCalidadModelo(data.calidad_modelo);
   renderTabla(data.por_producto);
-  if (modoActivo === "abastecimiento") renderAbastecimiento(data.por_producto);
   lucide.createIcons();
   renderImportancia(data.calidad_modelo);
 }
@@ -1094,7 +1079,7 @@ function renderEstadoB(calidad) {
     (negativo ? "más error" : "menos error") + ` que ${nombreBaseline} — el modelo de referencia más exigente de los 2, medido en WAPE`;
 
   const badge = document.getElementById("badgeConfiabilidadAlta");
-  badge.textContent = `Confiabilidad alta — validado con ${h.dias_evaluados ?? "—"} días de historial`;
+  badge.innerHTML = `<span class="pulse-dot-inline"></span>Confiabilidad alta — validado con ${h.dias_evaluados ?? "—"} días de historial`;
 
   // 4 tarjetas: MAE, RMSE, WAPE, R² — cada una con badge cualitativo.
   // Umbrales sobre la versión normalizada (0-1) de cada métrica, pero
@@ -1144,7 +1129,17 @@ function renderEstadoB(calidad) {
 
   renderChartWape(h);
   renderTablaComparativa(h);
-  renderChartScatter(h);
+
+  const pilarRL = document.getElementById("pilarRegresionLineal");
+  if (calidad.grafico_regresion_disponible) {
+    pilarRL.style.display = "block";
+    document.getElementById("tituloGraficoGanador").textContent =
+      `¿Qué tan cerca predice ${h.modelo_ganador || "el modelo"} de la realidad?`;
+    document.getElementById("imgRegresionLineal").src =
+      "/prediccion/grafico-regresion?t=" + Date.now();
+  } else {
+    pilarRL.style.display = "none";
+  }
 }
 
 function renderTablaComparativa(h) {
@@ -1208,121 +1203,102 @@ function renderChartWape(h) {
   });
 }
 
-let chartScatterInstance = null;
-function renderChartScatter(h) {
-  const canvas = document.getElementById("chartScatter");
-  if (!h.scatter || !h.scatter.length) return;
-  if (chartScatterInstance) chartScatterInstance.destroy();
-
-  const puntos = h.scatter.map(p => ({ x: p.real, y: p.predicho }));
-  const maxVal = Math.max(...h.scatter.map(p => Math.max(p.real, p.predicho))) * 1.05;
-
-  chartScatterInstance = new Chart(canvas, {
-    data: {
-      datasets: [
-        {
-          type: "scatter",
-          label: h.modelo_ganador || "RestoIQ",
-          data: puntos,
-          backgroundColor: "rgba(99,102,241,.55)",
-          pointRadius: 3,
-        },
-        {
-          type: "line",
-          label: "Predicción exacta (y = x)",
-          data: [{ x: 0, y: 0 }, { x: maxVal, y: maxVal }],
-          borderColor: "rgba(220,38,38,.7)",
-          borderDash: [6, 4],
-          borderWidth: 1.5,
-          pointRadius: 0,
-          fill: false,
-        },
-      ]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: { legend: { display: true, position: "bottom", labels: { boxWidth: 10, font: { size: 10 } } } },
-      scales: {
-        x: { title: { display: true, text: "Real (unidades)", font: { size: 10 } }, grid: { color: "rgba(0,0,0,.05)" } },
-        y: { title: { display: true, text: "Predicho (unidades)", font: { size: 10 } }, grid: { color: "rgba(0,0,0,.05)" } }
-      }
-    }
-  });
-}
-
+let porProductoCompleto = [];
+let porProductoFiltrado = [];
 
 function renderTabla(porProducto) {
-  const maxCant = Math.max(...porProducto.map(r => r.cantidad_pred));
-  const wrap    = document.getElementById("tablaWrap");
-
-  wrap.innerHTML = `
-    <div class="pred-table-wrap">
-      <table class="pred-table">
-        <thead>
-          <tr>
-            <th>Fecha</th>
-            <th>Día</th>
-            <th>Producto</th>
-            <th>Cantidad estimada</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${porProducto.map(r => {
-            const fecha  = new Date(r.fecha + "T00:00:00");
-            const dia    = fecha.getDay(); // 0=Dom,6=Sáb
-            const esFinde   = dia === 0 || dia === 6;
-            const nombreDia = ["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"][dia];
-            const pct       = Math.round((r.cantidad_pred / maxCant) * 100);
-            return `
-              <tr>
-                <td>${r.fecha}</td>
-                <td>
-                  <span class="dia-badge ${esFinde ? "dia-finde" : "dia-semana"}">
-                    ${nombreDia}
-                  </span>
-                </td>
-                <td>${r.producto}</td>
-                <td>
-                  <div class="cantidad-bar-wrap">
-                    <div class="cantidad-bar" style="width:${Math.max(pct, 4)}px"></div>
-                    ${r.cantidad_pred.toLocaleString()}
-                  </div>
-                </td>
-              </tr>`;
-          }).join("")}
-        </tbody>
-      </table>
-    </div>`;
+  porProductoCompleto = porProducto;
+  aplicarFiltroTabla();
 }
 
-function renderAbastecimiento(porProducto) {
-  const totales = {};
-  porProducto.forEach(r => {
-    totales[r.producto] = (totales[r.producto] || 0) + r.cantidad_pred;
-  });
-  const ordenado = Object.entries(totales).sort((a, b) => b[1] - a[1]);
-  const max = Math.max(...ordenado.map(([, cant]) => cant));
-  const wrap = document.getElementById("abastecimientoWrap");
+function aplicarFiltroTabla() {
+  const texto = (document.getElementById("buscarProducto").value || "").toLowerCase();
+  const filtroDia = document.getElementById("filtroDiaTabla").value;
 
-  wrap.innerHTML = `<div class="top-prod-list">` +
-    ordenado.map(([prod, cant], i) => `
-      <div class="top-prod-item">
-        <div class="top-prod-rank">${i + 1}</div>
-        <span class="top-prod-name">${prod}</span>
-        <div class="top-prod-bar-wrap">
-          <div class="top-prod-bar" style="width:${Math.round((cant / max) * 100)}%"></div>
-        </div>
-        <span class="top-prod-cant">${Math.round(cant).toLocaleString()} u.</span>
-      </div>`
-    ).join("") + `</div>`;
+  porProductoFiltrado = porProductoCompleto.filter(r => {
+    if (texto && !r.producto.toLowerCase().includes(texto)) return false;
+    if (filtroDia) {
+      const dia = new Date(r.fecha + "T00:00:00").getDay();
+      const esFinde = dia === 0 || dia === 6;
+      if (filtroDia === "finde" && !esFinde) return false;
+      if (filtroDia === "semana" && esFinde) return false;
+    }
+    return true;
+  });
+
+  _pintarTabla(porProductoFiltrado);
+}
+
+function _pintarTabla(porProducto) {
+  const wrap = document.getElementById("tablaWrap");
+
+  if (!porProducto.length) {
+    wrap.innerHTML = `
+      <div class="empty-state">
+        <i data-lucide="search-x"></i>
+        <p>No se encontraron productos con ese filtro.</p>
+      </div>`;
+    lucide.createIcons();
+    return;
+  }
+
+  // Agrupar por producto: cada uno es un ítem plegable, ordenado por
+  // demanda total (mayor primero) — con muchos productos, la tabla no
+  // se alarga sola, solo los primeros 3 aparecen abiertos.
+  const grupos = {};
+  porProducto.forEach(r => {
+    (grupos[r.producto] = grupos[r.producto] || []).push(r);
+  });
+  const productos = Object.entries(grupos)
+    .map(([producto, filas]) => ({
+      producto,
+      filas: filas.slice().sort((a, b) => a.fecha.localeCompare(b.fecha)),
+      total: filas.reduce((s, f) => s + f.cantidad_pred, 0),
+    }))
+    .sort((a, b) => b.total - a.total);
+
+  const maxTotal = Math.max(...productos.map(p => p.total));
+  const diaCorto = ["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"];
+
+  wrap.innerHTML = `
+    <div class="acordeon-tabla">
+      ${productos.map((p, idx) => {
+        const pct = Math.round((p.total / maxTotal) * 100);
+        return `
+        <details class="acordeon-item" ${idx < 3 ? "open" : ""}>
+          <summary class="acordeon-cabecera">
+            <i data-lucide="chevron-right" class="acordeon-flecha"></i>
+            <span class="acordeon-producto">${p.producto}</span>
+            <div class="cantidad-bar-wrap" style="flex:1;max-width:200px;">
+              <div class="cantidad-bar" style="width:${Math.max(pct, 4)}px"></div>
+            </div>
+            <span class="acordeon-total">${Math.round(p.total).toLocaleString()} u. totales</span>
+          </summary>
+          <table class="pred-table acordeon-tabla-interna">
+            <thead><tr><th>Fecha</th><th>Día</th><th>Cantidad estimada</th></tr></thead>
+            <tbody>
+              ${p.filas.map(r => {
+                const dia = new Date(r.fecha + "T00:00:00").getDay();
+                const esFinde = dia === 0 || dia === 6;
+                return `
+                  <tr>
+                    <td>${r.fecha}</td>
+                    <td><span class="dia-badge ${esFinde ? "dia-finde" : "dia-semana"}">${diaCorto[dia]}</span></td>
+                    <td>${r.cantidad_pred.toLocaleString()}</td>
+                  </tr>`;
+              }).join("")}
+            </tbody>
+          </table>
+        </details>`;
+      }).join("")}
+    </div>`;
   lucide.createIcons();
 }
 
 // ── Exportar CSV ──────────────────────────────────────────
 function exportarCSV() {
   if (!datosPrediccion) return;
-  const rows   = datosPrediccion.por_producto;
+  const rows   = porProductoFiltrado.length ? porProductoFiltrado : datosPrediccion.por_producto;
   const header = "fecha,producto,cantidad_pred";
   const lines  = rows.map(r => `${r.fecha},${r.producto},${r.cantidad_pred}`);
   const blob = new Blob([[header, ...lines].join("\n")], { type: "text/csv" });

@@ -703,6 +703,15 @@ class SalesModel:
             {"real": round(float(y_reales[i]), 1), "predicho": round(float(pred_ganador[i]), 1)}
             for i in idx_muestra
         ]
+        # R² del modelo GANADOR específicamente — para el gráfico
+        # matplotlib/seaborn, que siempre explica al modelo que
+        # realmente se usa, nunca a uno fijo.
+        r2_por_modelo = {
+            "RestoIQ": r2_restoiq,
+            "Regresión Lineal": r2_baseline,
+            "Naive estacional (lag-7)": r2_naive,
+        }
+        r2_ganador = r2_por_modelo.get(modelo_ganador, r2_restoiq)
 
         detalle_completo = pd.concat(detalle_folds, ignore_index=True)
         serie_diaria = (
@@ -745,6 +754,7 @@ class SalesModel:
             "naive_nombre":     "Naive estacional (lag-7)",
             "modelo_ganador":   modelo_ganador,
             "scatter":          scatter,
+            "r2_ganador":       r2_ganador,
             "serie_diaria":     serie_diaria.to_dict(orient="records"),
         }
 

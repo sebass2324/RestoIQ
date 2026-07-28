@@ -121,8 +121,17 @@
   </div>
 
   <!-- ══ FRANJA INFERIOR — resumen de tus 2 modelos de ML ══ -->
-  <p class="section-label">Resumen de tus modelos</p>
-  <div class="summary-grid" style="margin-bottom:1.5rem;">
+  <!-- ══ FRANJA INFERIOR — resumen de tus 2 modelos de ML ══ -->
+<p class="section-label">Resumen de tus modelos</p>
+{% if datos.info_modelo %}
+<p class="pulse-badge" style="margin:-0.5rem 0 1rem;">
+  <span class="pulse-dot"></span>
+  Modelo entrenado con {{ "{:,}".format(datos.info_modelo.registros_usados) }} ventas
+  {% if datos.info_modelo.meses_historial %}de los últimos {{ datos.info_modelo.meses_historial }} meses{% endif %}
+  {% if datos.info_modelo.fecha_ultimo_entrenamiento %}· actualizado {{ datos.info_modelo.fecha_ultimo_entrenamiento }}{% endif %}
+</p>
+{% endif %}
+<div class="summary-grid" style="margin-bottom:1.5rem;">
 
     <div class="card">
       <div class="card-top">
