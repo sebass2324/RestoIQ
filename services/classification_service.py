@@ -27,6 +27,23 @@ from models.configuracion_analisis import ConfiguracionAnalisis
 MODELOS_DIR = "ml_models"
 HORIZONTE_DEFECTO = 7
 
+# Mismo criterio que services/prediction_service.py (duplicado a
+# propósito, mismo patrón de independencia entre servicios que ya
+# usa este proyecto): reentrenar solo si el historial creció al
+# menos UMBRAL_FILAS_NUEVAS filas O un UMBRAL_CRECIMIENTO_PCT%.
+UMBRAL_FILAS_NUEVAS    = 20
+UMBRAL_CRECIMIENTO_PCT = 0.05
+
+
+def _supera_umbral_reentrenamiento(filas_actuales: int, filas_anteriores: int) -> bool:
+    if not filas_anteriores or filas_anteriores <= 0:
+        return True
+    crecimiento_absoluto = filas_actuales - filas_anteriores
+    if crecimiento_absoluto <= 0:
+        return False
+    crecimiento_relativo = crecimiento_absoluto / filas_anteriores
+    return crecimiento_absoluto >= UMBRAL_FILAS_NUEVAS or crecimiento_relativo >= UMBRAL_CRECIMIENTO_PCT
+
 
 def _ruta_modelo(user_id: int) -> str:
     return os.path.join(MODELOS_DIR, f"user_{user_id}_clasificacion.pkl")
@@ -123,11 +140,17 @@ def _obtener_modelo(user_id: int, df: pd.DataFrame, forzar: bool = False):
         from services.storage_service import asegurar_local
         asegurar_local(os.path.basename(ruta), ruta)
 
+    hash_cambio = registro is None or registro.dataset_hash != hash_actual
+    supera_umbral = (
+        registro is None
+        or _supera_umbral_reentrenamiento(len(df), registro.filas_entrenamiento or 0)
+    )
+
     necesita_reentrenar = (
         forzar
         or registro is None
         or not os.path.exists(ruta)
-        or registro.dataset_hash != hash_actual
+        or (hash_cambio and supera_umbral)
     )
 
     if not necesita_reentrenar:
@@ -157,6 +180,7 @@ def _obtener_modelo(user_id: int, df: pd.DataFrame, forzar: bool = False):
         db.session.add(registro)
 
     registro.dataset_hash        = hash_actual
+    registro.filas_entrenamiento = len(df)
     registro.f1_macro            = metricas.get("f1_macro")
     registro.accuracy            = metricas.get("accuracy")
     registro.ruta_pkl            = ruta

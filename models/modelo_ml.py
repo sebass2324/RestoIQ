@@ -22,6 +22,13 @@ class ModeloML(db.Model):
 
     dataset_hash = db.Column(db.String(64), nullable=False)
 
+    # Cantidad de filas del historial usadas en el último entrenamiento
+    # — con esto se calcula cuánto creció el dataset desde entonces,
+    # para decidir si vale la pena reentrenar (ver services/prediction_service.py,
+    # _supera_umbral_reentrenamiento). Nullable porque los registros
+    # viejos (de antes de este campo) no lo tienen — se trata como 0.
+    filas_entrenamiento = db.Column(db.Integer, nullable=True)
+
     estrategia = db.Column(db.String(50), nullable=True)
 
     mae = db.Column(db.Float, nullable=True)
