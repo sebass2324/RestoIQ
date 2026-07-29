@@ -27,6 +27,23 @@ from models.configuracion_analisis import ConfiguracionAnalisis
 MODELOS_DIR = "ml_models"
 HORIZONTE_DEFECTO = 7
 
+# Mismo criterio que services/prediction_service.py (duplicado a
+# propósito, mismo patrón de independencia entre servicios que ya
+# usa este proyecto): reentrenar solo si el historial creció al
+# menos UMBRAL_FILAS_NUEVAS filas O un UMBRAL_CRECIMIENTO_PCT%.
+UMBRAL_FILAS_NUEVAS    = 20
+UMBRAL_CRECIMIENTO_PCT = 0.05
+
+
+def _supera_umbral_reentrenamiento(filas_actuales: int, filas_anteriores: int) -> bool:
+    if not filas_anteriores or filas_anteriores <= 0:
+        return True
+    crecimiento_absoluto = filas_actuales - filas_anteriores
+    if crecimiento_absoluto <= 0:
+        return False
+    crecimiento_relativo = crecimiento_absoluto / filas_anteriores
+    return crecimiento_absoluto >= UMBRAL_FILAS_NUEVAS or crecimiento_relativo >= UMBRAL_CRECIMIENTO_PCT
+
 
 def _ruta_modelo(user_id: int) -> str:
     return os.path.join(MODELOS_DIR, f"user_{user_id}_clasificacion.pkl")
@@ -116,11 +133,17 @@ def _obtener_modelo(user_id: int, df: pd.DataFrame, forzar: bool = False):
     registro = ModeloClasificacion.query.filter_by(user_id=user_id).first()
     ruta = _ruta_modelo(user_id)
 
+    hash_cambio = registro is None or registro.dataset_hash != hash_actual
+    supera_umbral = (
+        registro is None
+        or _supera_umbral_reentrenamiento(len(df), registro.filas_entrenamiento or 0)
+    )
+
     necesita_reentrenar = (
         forzar
         or registro is None
         or not os.path.exists(ruta)
-        or registro.dataset_hash != hash_actual
+        or (hash_cambio and supera_umbral)
     )
 
     if not necesita_reentrenar:
@@ -138,8 +161,9 @@ def _obtener_modelo(user_id: int, df: pd.DataFrame, forzar: bool = False):
     modelo.guardar(ruta)
 
     if metricas.get("matriz_confusion") and metricas.get("clases"):
+        ruta_matriz = _ruta_matriz(user_id)
         generar_matriz_confusion_png(
-            metricas["matriz_confusion"], metricas["clases"], _ruta_matriz(user_id)
+            metricas["matriz_confusion"], metricas["clases"], ruta_matriz
         )
 
     if registro is None:
@@ -147,6 +171,7 @@ def _obtener_modelo(user_id: int, df: pd.DataFrame, forzar: bool = False):
         db.session.add(registro)
 
     registro.dataset_hash        = hash_actual
+    registro.filas_entrenamiento = len(df)
     registro.f1_macro            = metricas.get("f1_macro")
     registro.accuracy            = metricas.get("accuracy")
     registro.ruta_pkl            = ruta
@@ -187,31 +212,55 @@ def _predecir_horizonte(modelo: ModeloAbastecimiento, df: pd.DataFrame, dias: in
     productos = sorted(df["producto"].unique().tolist())
     fechas = _fechas_futuras(dias, dias_operacion)
 
-    resultado = []
+    # Armar TODOS los contextos primero (día × producto), sin predecir
+    # todavía — la predicción se hace una sola vez, en lote, más abajo.
+    # Predecir uno por uno acá adentro dispara joblib.Parallel una vez
+    # por cada llamada, que en un horizonte con muchos días×productos
+    # es mucho overhead de memoria innecesario (causó un Out of Memory
+    # en producción con recursos limitados).
+    contextos = []
+    metadatos = []  # guarda fecha/producto/categoria/factores en el mismo orden que contextos
     for fecha in fechas:
         feats_dia = _features_fecha(fecha)
-        productos_dia = []
+        factores = _factores_dia(feats_dia)
         for prod in productos:
-            contexto = {
+            contextos.append({
                 **feats_dia,
                 "categoria":           cat_por_producto.get(prod),
                 "precio":              precio_por_producto.get(prod),
                 "promocion":           0,
                 "descuento_pct":       0,
                 "es_evento_especial":  0,
-            }
-            r = modelo.predecir(contexto)
-            productos_dia.append({
-                "producto":       prod,
-                "categoria":      cat_por_producto.get(prod) or "—",
-                "prioridad":      r["prioridad"],
-                "confianza":      r["confianza"],
-                "probabilidades": r["probabilidades"],
-                "factores":       _factores_dia(feats_dia),
             })
-        orden = {"Alta": 0, "Media": 1, "Baja": 2}
-        productos_dia.sort(key=lambda p: orden.get(p["prioridad"], 3))
-        resultado.append({"fecha": fecha.strftime("%Y-%m-%d"), "productos": productos_dia})
+            metadatos.append({
+                "fecha": fecha.strftime("%Y-%m-%d"),
+                "producto": prod,
+                "categoria": cat_por_producto.get(prod) or "—",
+                "factores": factores,
+            })
+
+    predicciones = modelo.predecir_lote(contextos)
+
+    # Reagrupar por fecha, en el mismo orden que ya tenías
+    por_fecha = {}
+    for meta, r in zip(metadatos, predicciones):
+        fila = {
+            "producto":       meta["producto"],
+            "categoria":      meta["categoria"],
+            "prioridad":      r["prioridad"],
+            "confianza":      r["confianza"],
+            "probabilidades": r["probabilidades"],
+            "factores":       meta["factores"],
+        }
+        por_fecha.setdefault(meta["fecha"], []).append(fila)
+
+    orden_prioridad = {"Alta": 0, "Media": 1, "Baja": 2}
+    resultado = []
+    for fecha in fechas:
+        fecha_str = fecha.strftime("%Y-%m-%d")
+        productos_dia = por_fecha.get(fecha_str, [])
+        productos_dia.sort(key=lambda p: orden_prioridad.get(p["prioridad"], 3))
+        resultado.append({"fecha": fecha_str, "productos": productos_dia})
     return resultado
 
 

@@ -29,6 +29,26 @@ from models.configuracion_analisis import ConfiguracionAnalisis
 
 MODELOS_DIR = "ml_models"
 
+# Umbral híbrido: reentrenar solo si el historial creció al menos
+# UMBRAL_FILAS_NUEVAS filas O un UMBRAL_CRECIMIENTO_PCT%, lo que ocurra
+# primero. Sin esto, cualquier cambio (aunque sean 2 filas nuevas)
+# dispara un reentrenamiento completo — y ese costo (memoria, tiempo)
+# crece con el tamaño del historial, no es fijo. Con esto, subir un
+# archivo chico actualiza los datos en MySQL igual, pero no reentrena
+# hasta que el crecimiento realmente lo justifique.
+UMBRAL_FILAS_NUEVAS   = 20
+UMBRAL_CRECIMIENTO_PCT = 0.05
+
+
+def _supera_umbral_reentrenamiento(filas_actuales: int, filas_anteriores: int) -> bool:
+    if not filas_anteriores or filas_anteriores <= 0:
+        return True  # sin base de comparación (primer entrenamiento o dato viejo sin este campo) → entrenar
+    crecimiento_absoluto = filas_actuales - filas_anteriores
+    if crecimiento_absoluto <= 0:
+        return False  # el historial no creció (o encogió), no hay nada nuevo que justifique reentrenar
+    crecimiento_relativo = crecimiento_absoluto / filas_anteriores
+    return crecimiento_absoluto >= UMBRAL_FILAS_NUEVAS or crecimiento_relativo >= UMBRAL_CRECIMIENTO_PCT
+
 
 def _ruta_modelo(user_id: int) -> str:
     return os.path.join(MODELOS_DIR, f"user_{user_id}.pkl")
@@ -84,10 +104,13 @@ def _obtener_modelo(user_id: int, df: pd.DataFrame, config: ConfiguracionAnalisi
     registro_modelo = ModeloML.query.filter_by(user_id=user_id).first()
     ruta = _ruta_modelo(user_id)
 
-    hash_desactualizado = (
-        config.reentrenar_automatico
-        and (registro_modelo is None or registro_modelo.dataset_hash != hash_actual)
+    hash_cambio = registro_modelo is None or registro_modelo.dataset_hash != hash_actual
+    supera_umbral = (
+        registro_modelo is None
+        or _supera_umbral_reentrenamiento(len(df), registro_modelo.filas_entrenamiento or 0)
     )
+    hash_desactualizado = config.reentrenar_automatico and hash_cambio and supera_umbral
+
     necesita_reentrenar = (
         forzar
         or registro_modelo is None
@@ -114,12 +137,13 @@ def _obtener_modelo(user_id: int, df: pd.DataFrame, config: ConfiguracionAnalisi
     holdout = metricas.get("holdout")
     if holdout and holdout.get("scatter"):
         scatter = holdout["scatter"]
+        ruta_grafico = _ruta_grafico_regresion(user_id)
         generar_grafico_regresion_png(
             real=[p["real"] for p in scatter],
             predicho=[p["predicho"] for p in scatter],
             r2=holdout.get("r2_ganador", 0),
             nombre_modelo=holdout.get("modelo_ganador", "el modelo"),
-            ruta_salida=_ruta_grafico_regresion(user_id),
+            ruta_salida=ruta_grafico,
         )
 
     if registro_modelo is None:
@@ -127,6 +151,7 @@ def _obtener_modelo(user_id: int, df: pd.DataFrame, config: ConfiguracionAnalisi
         db.session.add(registro_modelo)
 
     registro_modelo.dataset_hash        = hash_actual
+    registro_modelo.filas_entrenamiento = len(df)
     registro_modelo.estrategia          = metricas.get("estrategia")
     registro_modelo.mae                 = metricas.get("mae")
     registro_modelo.mape                = metricas.get("mape")
