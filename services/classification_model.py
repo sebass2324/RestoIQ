@@ -394,13 +394,51 @@ class ModeloAbastecimiento:
                 "probabilidades": {c: round(float(probs[orden.index(c)]), 4)
                                    for c in orden}}
 
+    def predecir_lote(self, contextos: list) -> list:
+        """
+        Igual que predecir(), pero para MUCHOS contextos en una sola
+        llamada al modelo, no una por una. Un RandomForestClassifier
+        calibrado dispara su propia maquinaria de paralelismo
+        (joblib.Parallel) en CADA llamada a predict_proba() — sobre un
+        horizonte con muchos días × productos, eso significa cientos
+        de invocaciones de Parallel, cada una con su propio overhead
+        de memoria. Predecir todo junto colapsa eso a una sola
+        invocación, mucho más liviano — esto fue lo que causó un
+        Out of Memory en producción (Render, plan gratis, 512MB RAM).
+        """
+        if self.modelo is None:
+            raise ValueError("El modelo no está entrenado.")
+        if not contextos:
+            return []
+        X = self._construir_features(pd.DataFrame(contextos), entrenando=False)
+        clases = self.modelo.predict(X)
+        probs = self.modelo.predict_proba(X)
+        orden = list(self.modelo.classes_)
+
+        resultados = []
+        for i, clase in enumerate(clases):
+            fila_probs = probs[i]
+            resultados.append({
+                "prioridad": clase,
+                "confianza": round(float(fila_probs[orden.index(clase)]), 4),
+                "probabilidades": {c: round(float(fila_probs[orden.index(c)]), 4)
+                                   for c in orden},
+            })
+        return resultados
+
     # ────────────────────────────────────────
     # 7. PERSISTENCIA
     # ────────────────────────────────────────
 
     def guardar(self, ruta):
-        import joblib; joblib.dump(self, ruta)
+        import joblib, os
+        joblib.dump(self, ruta)
+        from services.storage_service import subir
+        subir(ruta, os.path.basename(ruta))
 
     @staticmethod
     def cargar(ruta):
-        import joblib; return joblib.load(ruta)
+        import joblib, os
+        from services.storage_service import asegurar_local
+        asegurar_local(os.path.basename(ruta), ruta)
+        return joblib.load(ruta)
