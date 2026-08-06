@@ -1,444 +1,532 @@
-"""
-services/classification_model.py
+"""Clasificador de prioridad de abastecimiento con LightGBM.
 
-Modelo de CLASIFICACIÓN — Prioridad de Abastecimiento (RandomForestClassifier).
+La etiqueta representa la demanda REAL diaria de cada producto: ``Baja``,
+``Media`` o ``Alta``. Los límites son terciles del historial disponible del
+producto (con respaldo por categoría o global) y se ajustan exclusivamente
+con el periodo de entrenamiento de cada pliegue.
 
-Segundo modelo de ML de RestoIQ, 100% independiente del regresor (LGBM).
-NO predice demanda ni usa la salida del regresor. Clasifica cada (producto, día)
-en un nivel de prioridad operativa para planificar compras/preparación.
-
-    Clases:  🟢 Baja  ·  🟡 Media  ·  🔴 Alta
-
-────────────────────────────────────────────────────────────────────────────
-ETIQUETA (ground-truth) — un solo promedio, sin pesos manuales:
-
-  Por producto, tres propiedades medidas del histórico REAL y llevadas a
-  PERCENTIL [0,1] (rank empírico entre productos, no min-max arbitrario):
-      · rotacion_pct      = percentil de la mediana de cantidad diaria
-      · volatilidad_pct   = percentil del coef. de variación (std/media)
-      · impacto_promo_pct = percentil de cuánto sube la demanda en promo
-  Por día, presión del contexto (promedio de flags activos, ya en [0,1]):
-      · presion_dia = promedio(es_finde, es_feriado, promocion, es_quincena, es_puente)
-
-      criticidad = promedio(rotacion_pct, volatilidad_pct, impacto_promo_pct, presion_dia)
-
-  Un solo paso, cuatro señales, mismo peso cada una — fácil de explicar y
-  de defender. Discretización por TERCILES (percentiles 33/66 del train)
-  → 3 clases balanceadas. Nunca usa la predicción del regresor.
-
-────────────────────────────────────────────────────────────────────────────
-FEATURES del RF:
-  · categoría (one-hot)
-  · features INDIRECTAS de categoría: percentil promedio de rotación/
-    volatilidad/impacto_promo de los productos de esa categoría (calculado
-    solo con train). Sin esto, el modelo no tenía NINGUNA variable
-    relacionada con lo que arma la etiqueta — no podía aprender lo que no
-    podía observar. Es señal de GRUPO, no identifica un producto puntual
-    (a diferencia de 'precio', que sí actuaba como ID encubierto y se
-    sacó por eso), así que un producto nuevo la hereda automáticamente.
-  · contexto temporal (día de semana, mes, semana, finde, feriado, puente,
-    quincena) + promoción/descuento/evento si el archivo los trae.
-
-  NUNCA usa: precio, cantidad/demanda cruda, ni el producto como ID.
-
-────────────────────────────────────────────────────────────────────────────
-CALIDAD DEL MODELO:
-  · Random Forest con hiperparámetros elegidos por una búsqueda pequeña
-    (RandomizedSearchCV, validación cruzada SOLO sobre train) en vez de
-    valores fijos a mano.
-  · Probabilidades CALIBRADAS (CalibratedClassifierCV) — para que
-    predict_proba() sea un número confiable (ej. "80% de confianza"
-    realmente ronde el 80% de aciertos), utilizable después en Insights
-    o un futuro motor de decisión, no solo un ranking interno del árbol.
-  · Confianza de cada predicción (probabilidad de la clase asignada)
-    disponible en cada resultado y resumida en las métricas del holdout.
+La validación es walk-forward por fechas completas. Las variables históricas
+siempre se calculan con ``shift(1)``: ninguna fila usa su propia venta ni una
+venta futura para construir sus variables de entrada.
 """
 
+from __future__ import annotations
+
+import os
+from datetime import timedelta
+
+import lightgbm as lgb
 import numpy as np
 import pandas as pd
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.calibration import CalibratedClassifierCV
 from sklearn.dummy import DummyClassifier
 from sklearn.metrics import (
-    accuracy_score, f1_score, precision_recall_fscore_support,
-    confusion_matrix,
+    accuracy_score, confusion_matrix, f1_score,
+    precision_recall_fscore_support,
 )
 
 
 CLASES = ["Baja", "Media", "Alta"]
-BANDAS_PRECIO = ["Bajo", "Medio", "Alto"]
-
-COMPONENTES_PRODUCTO = ["rotacion", "volatilidad", "impacto_promo"]
-FLAGS_DIA = ["es_finde", "es_feriado", "promocion", "es_quincena", "es_puente"]
-
-# Contexto usable como feature (solo si existe en el df). Precio entra
-# SOLO como banda (Bajo/Medio/Alto), nunca crudo — el valor exacto
-# actúa como ID de producto y rompe la generalización a productos
-# nuevos (memorización, ver docstring del módulo); la banda conserva
-# la señal ordinal ("los productos caros rotan distinto que los
-# baratos") sin identificar a un producto puntual.
-FEATURES_PRODUCTO   = ["categoria", "promocion", "descuento_pct", "es_evento_especial"]
-FEATURES_TEMPORALES = ["dia_semana", "mes", "semana_anio",
-                       "es_finde", "es_feriado", "es_puente", "es_quincena"]
-
-FRACCION_TRAIN = 0.8
-
-# Hiperparámetros del RF fijos, no buscados: una búsqueda con
-# RandomizedSearchCV se probó y midió (~6s por entrenamiento) contra
-# estos valores fijos y la diferencia de F1 fue ruido, no mejora real
-# — se optó por lo más simple y rápido, no por complejidad sin
-# beneficio medido.
-RF_PARAMS = {"n_estimators": 200, "max_depth": 10, "min_samples_leaf": 2}
+MINIMO_FILAS = 45
+MIN_FILAS_UMBRAL_PRODUCTO = 10
+MIN_FILAS_UMBRAL_CATEGORIA = 20
+LGBM_PARAMS = {
+    "n_estimators": 350,
+    "learning_rate": 0.04,
+    "num_leaves": 31,
+    "min_child_samples": 12,
+    "subsample": 0.85,
+    "colsample_bytree": 0.85,
+    "reg_lambda": 0.5,
+}
+FEATURES_CALENDARIO = [
+    "dia_semana", "dia_mes", "mes", "semana_anio", "es_finde",
+    "es_feriado", "es_puente", "es_quincena",
+]
+FEATURES_HISTORICAS = [
+    "lag_1", "lag_7", "lag_14", "lag_28", "rolling_7_mean",
+    "rolling_14_mean", "rolling_28_mean", "rolling_7_std",
+    "media_historica", "volatilidad_historica",
+]
+FEATURES_COMERCIALES = ["promocion", "descuento_pct", "es_evento_especial"]
 
 
 class ModeloAbastecimiento:
-    """Clasificador de prioridad de abastecimiento a nivel producto-día."""
+    """Clasifica la prioridad producto-día con LightGBM multiclase."""
 
     def __init__(self, random_state=42):
-        self.modelo = None                 # CalibratedClassifierCV una vez entrenado
-        self.mejores_hiperparametros = {}
+        self.modelo = None
         self.random_state = random_state
-
-        self.feature_names  = []
+        self.feature_names = []
         self.cols_categoria = []
-        self.stats_producto  = {}     # {prod: {rotacion, volatilidad, impacto_promo}} (raw)
-        self.stats_categoria = {}     # promedio raw por categoría (fallback + feature indirecta)
-        self.stat_global     = {}     # fallback global (raw promedio)
-        self._umbrales_precio = None  # terciles de precio promedio por producto (train)
-        self._arrays = {}             # {componente: np.array ordenado del train} para percentiles
-        self.umbrales = None          # (u1, u2) terciles del score en train
+        self.cols_producto = []
+        self.umbrales_producto = {}
+        self.umbrales_categoria = {}
+        self.umbrales_global = None
         self.clases = CLASES
-
         self.metricas = {}
         self.importancias = []
+        self.historial_producto = {}
+        self.perfil_producto = {}
+        self.perfil_categoria = {}
+        self.media_global = 0.0
+        self.mejores_hiperparametros = dict(LGBM_PARAMS)
 
-    # ────────────────────────────────────────
-    # 1. AGREGACIÓN A PRODUCTO-DÍA
-    # ────────────────────────────────────────
+    # Preparación ---------------------------------------------------------
+
+    @staticmethod
+    def _fecha_features(fecha):
+        fecha = pd.Timestamp(fecha)
+        return {
+            "dia_semana": fecha.weekday(),
+            "dia_mes": fecha.day,
+            "mes": fecha.month,
+            "semana_anio": int(fecha.isocalendar()[1]),
+            "es_finde": int(fecha.weekday() >= 5),
+            "es_quincena": int(1 <= fecha.day <= 7 or 15 <= fecha.day <= 21),
+        }
 
     def _agregar_producto_dia(self, df):
         df = df.copy()
         df["fecha"] = pd.to_datetime(df["fecha"])
+        df["cantidad"] = pd.to_numeric(df["cantidad"], errors="coerce")
+        df = df.dropna(subset=["fecha", "producto", "cantidad"])
 
         agg = {"cantidad": "sum"}
-        if "precio" in df.columns:             agg["precio"] = "mean"
-        if "descuento_pct" in df.columns:      agg["descuento_pct"] = "mean"
-        if "promocion" in df.columns:          agg["promocion"] = "max"
-        if "es_evento_especial" in df.columns: agg["es_evento_especial"] = "max"
-        if "categoria" in df.columns:          agg["categoria"] = "first"
-        for c in FEATURES_TEMPORALES:
-            if c in df.columns:                agg[c] = "first"
+        for columna, funcion in (
+            ("precio", "mean"), ("categoria", "first"),
+            ("descuento_pct", "mean"), ("promocion", "max"),
+            ("es_evento_especial", "max"),
+        ):
+            if columna in df.columns:
+                agg[columna] = funcion
+        for columna in FEATURES_CALENDARIO:
+            if columna in df.columns:
+                agg[columna] = "first"
 
-        pd_df = (df.groupby(["producto", "fecha"], as_index=False)
-                   .agg(agg).sort_values("fecha").reset_index(drop=True))
+        diario = df.groupby(["producto", "fecha"], as_index=False).agg(agg)
 
-        for c in ["promocion", "es_evento_especial",
-                  "es_finde", "es_feriado", "es_puente", "es_quincena"]:
-            if c in pd_df.columns:
-                pd_df[c] = pd_df[c].astype(float).fillna(0).astype(int)
-        return pd_df
+        # Completa días sin ventas para que lag_7 sea exactamente una semana.
+        piezas = []
+        for producto, grupo in diario.groupby("producto", sort=False):
+            grupo = grupo.set_index("fecha").sort_index()
+            fechas = pd.date_range(grupo.index.min(), grupo.index.max(), freq="D")
+            pieza = grupo.reindex(fechas)
+            pieza.index.name = "fecha"
+            pieza["producto"] = producto
+            pieza["cantidad"] = pieza["cantidad"].fillna(0.0)
+            for columna in ("categoria", "precio"):
+                if columna in pieza:
+                    pieza[columna] = pieza[columna].ffill().bfill()
+            for columna in FEATURES_COMERCIALES:
+                if columna in pieza:
+                    pieza[columna] = pd.to_numeric(
+                        pieza[columna], errors="coerce"
+                    ).fillna(0.0)
+            piezas.append(pieza.reset_index())
 
-    # ────────────────────────────────────────
-    # 2. ESTADÍSTICOS DE PRODUCTO (SOLO TRAIN)
-    # ────────────────────────────────────────
+        return pd.concat(piezas, ignore_index=True).sort_values(
+            ["fecha", "producto"]
+        ).reset_index(drop=True)
 
-    def _raw_producto(self, g):
-        """Calcula (rotacion, volatilidad, impacto_promo) crudos de un grupo."""
-        q = g["cantidad"].astype(float)
-        media = q.mean()
-        rot = float(q.median())
-        vol = float(q.std(ddof=0) / media) if media > 0 else 0.0
-        imp = 0.0
-        if "promocion" in g.columns:
-            con = q[g["promocion"] == 1]
-            sin = q[g["promocion"] == 0]
-            if len(con) > 0 and len(sin) > 0 and sin.mean() > 0:
-                imp = max(0.0, float((con.mean() - sin.mean()) / sin.mean()))
-        return {"rotacion": rot, "volatilidad": vol, "impacto_promo": imp}
+    def _con_historial(self, diario):
+        piezas = []
+        for _, grupo in diario.groupby("producto", sort=False):
+            grupo = grupo.sort_values("fecha").copy()
+            cantidad = grupo["cantidad"].astype(float)
+            for lag in (1, 7, 14, 28):
+                grupo[f"lag_{lag}"] = cantidad.shift(lag)
+            previo = cantidad.shift(1)
+            grupo["rolling_7_mean"] = previo.rolling(7, min_periods=1).mean()
+            grupo["rolling_14_mean"] = previo.rolling(14, min_periods=1).mean()
+            grupo["rolling_28_mean"] = previo.rolling(28, min_periods=1).mean()
+            grupo["rolling_7_std"] = previo.rolling(
+                7, min_periods=2
+            ).std().fillna(0.0)
+            grupo["media_historica"] = previo.expanding(min_periods=1).mean()
+            grupo["volatilidad_historica"] = previo.expanding(
+                min_periods=2
+            ).std().fillna(0.0)
+            piezas.append(grupo)
+        return pd.concat(piezas, ignore_index=True).dropna(
+            subset=["lag_28"]
+        ).reset_index(drop=True)
 
-    def _calcular_stats(self, df_train_pd):
-        stats = {p: self._raw_producto(g)
-                 for p, g in df_train_pd.groupby("producto")}
-        self.stats_producto = stats
+    # Etiqueta ------------------------------------------------------------
 
-        for comp in COMPONENTES_PRODUCTO:
-            self._arrays[comp] = np.sort([s[comp] for s in stats.values()])
+    @staticmethod
+    def _quantiles_seguros(cantidades):
+        """Retorna los terciles o ``None`` cuando no existen tres niveles."""
+        valores = np.asarray(cantidades, dtype=float)
+        if len(valores) < 3:
+            return None
+        bajo, alto = np.quantile(valores, [1 / 3, 2 / 3])
+        return None if bajo >= alto else (float(bajo), float(alto))
 
-        self.stats_categoria = {}
-        if "categoria" in df_train_pd.columns:
-            cat_de = (df_train_pd.groupby("producto")["categoria"].first().to_dict())
-            acc = {}
-            for prod, s in stats.items():
-                cat = cat_de.get(prod)
-                acc.setdefault(cat, []).append(s)
-            for cat, lst in acc.items():
-                self.stats_categoria[cat] = {
-                    c: float(np.mean([s[c] for s in lst])) for c in COMPONENTES_PRODUCTO}
+    def _fijar_umbrales(self, datos):
+        """Ajusta umbrales usando solo ``datos`` (el train del pliegue)."""
+        self.umbrales_global = self._quantiles_seguros(datos["cantidad"])
+        if self.umbrales_global is None:
+            raise ValueError(
+                "No hay suficiente variación de ventas para formar tres prioridades útiles."
+            )
 
-        self.stat_global = {
-            c: float(np.mean([s[c] for s in stats.values()])) for c in COMPONENTES_PRODUCTO}
+        self.umbrales_categoria = {}
+        if "categoria" in datos.columns:
+            for categoria, grupo in datos.groupby("categoria"):
+                if len(grupo) >= MIN_FILAS_UMBRAL_CATEGORIA:
+                    umbrales = self._quantiles_seguros(grupo["cantidad"])
+                    if umbrales is not None:
+                        self.umbrales_categoria[categoria] = umbrales
 
-        # Umbrales de banda de precio — terciles del precio PROMEDIO
-        # por producto, calculados solo con train.
-        self._umbrales_precio = None
-        if "precio" in df_train_pd.columns:
-            precio_por_producto = df_train_pd.groupby("producto")["precio"].mean()
-            if precio_por_producto.notna().any() and precio_por_producto.nunique() > 1:
-                self._umbrales_precio = tuple(precio_por_producto.quantile([1/3, 2/3]).values)
+        self.umbrales_producto = {}
+        for producto, grupo in datos.groupby("producto"):
+            if len(grupo) >= MIN_FILAS_UMBRAL_PRODUCTO:
+                umbrales = self._quantiles_seguros(grupo["cantidad"])
+                if umbrales is not None:
+                    self.umbrales_producto[producto] = umbrales
 
-    def _banda_precio(self, precio):
-        if self._umbrales_precio is None or pd.isna(precio):
-            return "Medio"
-        p1, p2 = self._umbrales_precio
-        if precio <= p1:
-            return "Bajo"
-        if precio <= p2:
-            return "Medio"
-        return "Alto"
+    def _umbrales_para(self, producto, categoria):
+        if producto in self.umbrales_producto:
+            return self.umbrales_producto[producto]
+        if categoria in self.umbrales_categoria:
+            return self.umbrales_categoria[categoria]
+        return self.umbrales_global
 
-    def _pct(self, valor, comp):
-        """Percentil empírico [0,1]: fracción de productos del train ≤ valor."""
-        arr = self._arrays.get(comp)
-        if arr is None or len(arr) == 0:
-            return 0.5
-        return float(np.searchsorted(arr, valor, side="right") / len(arr))
+    def _origen_umbral(self, producto, categoria):
+        if producto in self.umbrales_producto:
+            return "producto"
+        if categoria in self.umbrales_categoria:
+            return "categoria"
+        return "global"
 
-    def _raw_de(self, prod, cat):
-        if prod in self.stats_producto:
-            return self.stats_producto[prod]
-        if cat is not None and cat in self.stats_categoria:
-            return self.stats_categoria[cat]
-        return self.stat_global
-
-    # ────────────────────────────────────────
-    # 3. SCORE Y ETIQUETA — un solo promedio, 4 señales
-    # ────────────────────────────────────────
-
-    def _score_desde_raw(self, raw, row):
-        percentiles = [self._pct(raw[c], c) for c in COMPONENTES_PRODUCTO]
-        flags = [float(row.get(f, 0)) for f in FLAGS_DIA if f in row.index]
-        presion_dia = float(np.mean(flags)) if flags else 0.0
-        return float(np.mean(percentiles + [presion_dia]))
-
-    def _score_fila(self, row):
-        cat = row["categoria"] if "categoria" in row.index else None
-        raw = self._raw_de(row["producto"], cat)
-        return self._score_desde_raw(raw, row)
-
-    def _construir_scores(self, df_pd):
-        return df_pd.apply(self._score_fila, axis=1)
-
-    def _fijar_umbrales(self, scores_train):
-        self.umbrales = tuple(np.quantile(scores_train, [1/3, 2/3]))
-
-    def _a_clase(self, scores):
-        u1, u2 = self.umbrales
-        return pd.Series(np.where(scores <= u1, "Baja",
-                         np.where(scores <= u2, "Media", "Alta")),
-                         index=scores.index)
-
-    # ────────────────────────────────────────
-    # 4. FEATURES (X) — sin precio, sin producto-ID
-    # ────────────────────────────────────────
-
-    def _construir_features(self, df_pd, entrenando):
-        cols_num = [c for c in FEATURES_PRODUCTO + FEATURES_TEMPORALES
-                    if c in df_pd.columns and c != "categoria"]
-        X = df_pd[cols_num].copy()
-        for c in cols_num:
-            X[c] = pd.to_numeric(X[c], errors="coerce").fillna(0)
-
-        if "categoria" in df_pd.columns:
-            dummies = pd.get_dummies(df_pd["categoria"].astype(str), prefix="cat")
-            if entrenando:
-                self.cols_categoria = list(dummies.columns)
+    def _a_clase(self, datos):
+        categorias = (
+            datos["categoria"] if "categoria" in datos.columns
+            else pd.Series(None, index=datos.index)
+        )
+        clases = []
+        for cantidad, producto, categoria in zip(
+            datos["cantidad"], datos["producto"], categorias
+        ):
+            bajo, alto = self._umbrales_para(producto, categoria)
+            if cantidad <= bajo:
+                clases.append("Baja")
+            elif cantidad <= alto:
+                clases.append("Media")
             else:
-                dummies = dummies.reindex(columns=self.cols_categoria, fill_value=0)
-            X = pd.concat([X.reset_index(drop=True),
-                           dummies.reset_index(drop=True)], axis=1)
+                clases.append("Alta")
+        return pd.Series(clases, index=datos.index)
 
-            # Features indirectas de categoría (ver docstring del módulo).
-            cats = df_pd["categoria"].astype(str)
-            for comp in COMPONENTES_PRODUCTO:
-                X[f"cat_{comp}_pct"] = cats.map(
-                    lambda c: self._pct(self.stats_categoria.get(c, self.stat_global)[comp], comp)
-                ).astype(float).values
+    # Variables -----------------------------------------------------------
 
-        if "precio" in df_pd.columns and self._umbrales_precio is not None:
-            bandas = df_pd["precio"].apply(self._banda_precio)
-            dummies_precio = pd.get_dummies(bandas, prefix="precio")
-            for banda in BANDAS_PRECIO:
-                col = f"precio_{banda}"
-                if col not in dummies_precio.columns:
-                    dummies_precio[col] = 0
-            X = pd.concat([X.reset_index(drop=True),
-                           dummies_precio.reset_index(drop=True)], axis=1)
+    def _construir_features(self, df, entrenando):
+        base = pd.DataFrame(index=df.index)
+        for columna in FEATURES_CALENDARIO:
+            if columna in df:
+                base[columna] = pd.to_numeric(
+                    df[columna], errors="coerce"
+                ).fillna(0)
+            elif columna in (
+                "dia_semana", "dia_mes", "mes", "semana_anio",
+                "es_finde", "es_quincena",
+            ) and "fecha" in df:
+                base[columna] = [
+                    self._fecha_features(fecha)[columna] for fecha in df["fecha"]
+                ]
+            else:
+                base[columna] = 0
+
+        for columna in FEATURES_COMERCIALES + FEATURES_HISTORICAS:
+            base[columna] = (
+                pd.to_numeric(df[columna], errors="coerce").fillna(0.0)
+                if columna in df else 0.0
+            )
+
+        # Categorías nativas: se fijan con train. Un nivel no visto durante
+        # el entrenamiento se convierte en missing y LightGBM lo procesa como
+        # tal; nunca se crea una columna-identidad para memorizarlo.
+        for columna in ("categoria", "producto"):
+            valores = (
+                df[columna].fillna("Sin categoria").astype(str)
+                if columna in df else pd.Series("Sin categoria", index=df.index)
+            )
+            if entrenando:
+                niveles = sorted(valores.unique().tolist())
+                if columna == "categoria":
+                    self.cols_categoria = niveles
+                else:
+                    self.cols_producto = niveles
+            else:
+                niveles = (
+                    self.cols_categoria if columna == "categoria"
+                    else self.cols_producto
+                )
+            base[columna] = pd.Categorical(valores, categories=niveles)
 
         if entrenando:
-            self.feature_names = list(X.columns)
-        else:
-            X = X.reindex(columns=self.feature_names, fill_value=0)
-        return X
+            self.feature_names = list(base.columns)
+        return base.reindex(columns=self.feature_names, fill_value=0.0)
 
-    # ────────────────────────────────────────
-    # 5. ENTRENAMIENTO + EVALUACIÓN
-    # ────────────────────────────────────────
-
-    def entrenar(self, df):
-        pd_df = self._agregar_producto_dia(df)
-        if len(pd_df) < 30 or pd_df["producto"].nunique() < 2:
-            raise ValueError("Datos insuficientes para clasificación.")
-
-        corte = int(len(pd_df) * FRACCION_TRAIN)
-        fecha_corte = pd_df["fecha"].iloc[corte]
-        train = pd_df[pd_df["fecha"] < fecha_corte].reset_index(drop=True)
-        test  = pd_df[pd_df["fecha"] >= fecha_corte].reset_index(drop=True)
-        if len(train) < 20 or len(test) < 5:
-            train, test = pd_df.iloc[:corte].copy(), pd_df.iloc[corte:].copy()
-
-        self._calcular_stats(train)
-        s_train = self._construir_scores(train)
-        self._fijar_umbrales(s_train)
-        y_train = self._a_clase(s_train)
-        y_test  = self._a_clase(self._construir_scores(test))
-
-        X_train = self._construir_features(train, entrenando=True)
-        X_test  = self._construir_features(test,  entrenando=False)
-
-        # RF con hiperparámetros fijos (ver RF_PARAMS) — una búsqueda
-        # se probó y midió (~6s por entrenamiento) sin mejora real de
-        # F1 sobre estos valores fijos, así que se optó por lo más
-        # simple y rápido.
-        self.mejores_hiperparametros = dict(RF_PARAMS)
-        rf = RandomForestClassifier(
-            **RF_PARAMS, class_weight="balanced", random_state=self.random_state, n_jobs=-1,
+    @staticmethod
+    def _entrenar_lgbm(X, y, random_state):
+        modelo = lgb.LGBMClassifier(
+            **LGBM_PARAMS,
+            class_weight="balanced",
+            random_state=random_state,
+            n_jobs=1,
+            verbose=-1,
         )
+        categoricas = [c for c in ("categoria", "producto") if c in X.columns]
+        modelo.fit(X, y, categorical_feature=categoricas)
+        return modelo
 
-        # ── Calibración de probabilidades (predict_proba confiable) ──
-        # Barata (~0.4s medido) — se mantiene porque predict_proba()
-        # calibrado es lo que hace confiable el campo "confianza" que
-        # usa el sistema (y lo que podría usar Insights más adelante).
-        n_folds_calib = min(3, max(2, y_train.value_counts().min()))
-        self.modelo = CalibratedClassifierCV(rf, method="sigmoid", cv=n_folds_calib)
-        self.modelo.fit(X_train, y_train)
+    # Evaluación ----------------------------------------------------------
 
-        self._evaluar(X_test, y_test, y_train)
-
-        # Importancias: promedio entre los estimadores internos de la
-        # calibración (CalibratedClassifierCV no expone feature_importances_
-        # directo, pero cada fold sí entrenó un RandomForest real).
-        imp_arrays = [cc.estimator.feature_importances_ for cc in self.modelo.calibrated_classifiers_]
-        imp_media = np.mean(imp_arrays, axis=0)
-        imp = sorted(zip(self.feature_names, imp_media), key=lambda t: t[1], reverse=True)
-        self.importancias = [{"variable": v, "importancia": round(float(i), 4)}
-                             for v, i in imp[:10]]
-        return self.metricas
-
-    def _evaluar(self, X_test, y_test, y_train):
-        pred = self.modelo.predict(X_test)
-        probs = self.modelo.predict_proba(X_test)
-        confianza_promedio = float(np.mean(np.max(probs, axis=1)))
-
-        acc = accuracy_score(y_test, pred)
-        f1_macro = f1_score(y_test, pred, labels=CLASES, average="macro", zero_division=0)
-        f1_weight = f1_score(y_test, pred, labels=CLASES, average="weighted", zero_division=0)
-        prec, rec, f1c, sup = precision_recall_fscore_support(
-            y_test, pred, labels=CLASES, zero_division=0)
-        cm = confusion_matrix(y_test, pred, labels=CLASES)
-
-        dummy = DummyClassifier(strategy="most_frequent").fit(X_test, y_test)
-        d_strat = DummyClassifier(strategy="stratified",
-                                  random_state=self.random_state).fit(X_test, y_test)
-        f1_freq = f1_score(y_test, dummy.predict(X_test), labels=CLASES,
-                           average="macro", zero_division=0)
-        f1_strat = f1_score(y_test, d_strat.predict(X_test), labels=CLASES,
-                            average="macro", zero_division=0)
-        mejora = ((f1_macro - f1_freq) / f1_freq * 100) if f1_freq > 0 else float("inf")
-
-        self.metricas = {
-            "accuracy": round(float(acc), 4),
-            "f1_macro": round(float(f1_macro), 4),
-            "f1_weighted": round(float(f1_weight), 4),
-            "precision_macro": round(float(np.mean(prec)), 4),
-            "recall_macro": round(float(np.mean(rec)), 4),
-            "confianza_promedio": round(confianza_promedio, 4),
-            "por_clase": {CLASES[i]: {
-                "precision": round(float(prec[i]), 4),
-                "recall": round(float(rec[i]), 4),
-                "f1": round(float(f1c[i]), 4),
-                "soporte": int(sup[i])} for i in range(len(CLASES))},
-            "matriz_confusion": cm.tolist(),
+    def _metricas(self, y_true, pred, probs=None):
+        precision, recall, f1_por_clase, soporte = precision_recall_fscore_support(
+            y_true, pred, labels=CLASES, zero_division=0
+        )
+        baseline = DummyClassifier(strategy="most_frequent").fit(
+            np.zeros((len(y_true), 1)), y_true
+        )
+        f1_base = f1_score(
+            y_true,
+            baseline.predict(np.zeros((len(y_true), 1))),
+            labels=CLASES,
+            average="macro",
+            zero_division=0,
+        )
+        f1 = f1_score(y_true, pred, labels=CLASES, average="macro", zero_division=0)
+        return {
+            "accuracy": round(float(accuracy_score(y_true, pred)), 4),
+            "f1_macro": round(float(f1), 4),
+            "f1_weighted": round(float(f1_score(
+                y_true, pred, labels=CLASES, average="weighted", zero_division=0
+            )), 4),
+            "precision_macro": round(float(np.mean(precision)), 4),
+            "recall_macro": round(float(np.mean(recall)), 4),
+            "confianza_promedio": (
+                round(float(np.mean(np.max(probs, axis=1))), 4)
+                if probs is not None else None
+            ),
+            "por_clase": {
+                CLASES[i]: {
+                    "precision": round(float(precision[i]), 4),
+                    "recall": round(float(recall[i]), 4),
+                    "f1": round(float(f1_por_clase[i]), 4),
+                    "soporte": int(soporte[i]),
+                }
+                for i in range(len(CLASES))
+            },
+            "matriz_confusion": confusion_matrix(y_true, pred, labels=CLASES).tolist(),
             "clases": CLASES,
-            "baseline_f1_mayoritaria": round(float(f1_freq), 4),
-            "baseline_f1_aleatoria": round(float(f1_strat), 4),
-            "mejora_vs_baseline_pct": round(float(mejora), 2),
-            "n_train": int(len(y_train)),
-            "n_test": int(len(y_test)),
-            "umbrales_score": [round(float(u), 4) for u in self.umbrales],
-            "hiperparametros": self.mejores_hiperparametros,
+            "baseline_f1_mayoritaria": round(float(f1_base), 4),
+            "mejora_vs_baseline_pct": (
+                round(float((f1 - f1_base) / f1_base * 100), 2)
+                if f1_base else None
+            ),
+            "n_test": int(len(y_true)),
         }
 
-    # ────────────────────────────────────────
-    # 6. PREDICCIÓN
-    # ────────────────────────────────────────
+    @staticmethod
+    def _pliegues_por_fecha(datos, n_folds):
+        """Walk-forward sin dividir los productos de una misma fecha."""
+        fechas = np.sort(datos["fecha"].dropna().unique())
+        if len(fechas) <= n_folds:
+            return []
+        tam_test = len(fechas) // (n_folds + 1)
+        if tam_test == 0:
+            return []
+
+        inicio_test = len(fechas) - n_folds * tam_test
+        pliegues = []
+        for indice in range(n_folds):
+            inicio = inicio_test + indice * tam_test
+            fin = inicio + tam_test if indice < n_folds - 1 else len(fechas)
+            fecha_inicio, fecha_fin = fechas[inicio], fechas[fin - 1]
+            train = datos.loc[datos["fecha"] < fecha_inicio].copy()
+            test = datos.loc[
+                (datos["fecha"] >= fecha_inicio) & (datos["fecha"] <= fecha_fin)
+            ].copy()
+            if not train.empty and not test.empty:
+                pliegues.append((train, test))
+        return pliegues
+
+    def entrenar(self, df):
+        diario = self._agregar_producto_dia(df)
+        datos = self._con_historial(diario)
+        if len(datos) < MINIMO_FILAS or datos["producto"].nunique() < 2:
+            raise ValueError(
+                "Datos insuficientes: se requieren al menos 45 días-producto con historial."
+            )
+        datos = datos.sort_values(["fecha", "producto"]).reset_index(drop=True)
+
+        n_folds = 3 if len(datos) >= 120 else 2
+        pliegues = self._pliegues_por_fecha(datos, n_folds)
+        reales, predicciones, probabilidades, origenes = [], [], [], []
+        pliegues_evaluados = 0
+        for train, test in pliegues:
+            try:
+                self._fijar_umbrales(train)
+            except ValueError:
+                continue
+            y_train, y_test = self._a_clase(train), self._a_clase(test)
+            if y_train.nunique() < len(CLASES):
+                continue
+            X_train = self._construir_features(train, entrenando=True)
+            X_test = self._construir_features(test, entrenando=False)
+            modelo = self._entrenar_lgbm(X_train, y_train, self.random_state)
+            reales.extend(y_test.tolist())
+            predicciones.extend(modelo.predict(X_test).tolist())
+            probabilidades.extend(modelo.predict_proba(X_test).tolist())
+            categorias_test = test.get("categoria", pd.Series(None, index=test.index))
+            origenes.extend(
+                self._origen_umbral(producto, categoria)
+                for producto, categoria in zip(test["producto"], categorias_test)
+            )
+            pliegues_evaluados += 1
+
+        if not reales:
+            raise ValueError(
+                "El historial no permite una validación temporal con las tres prioridades."
+            )
+        self.metricas = self._metricas(reales, predicciones, np.asarray(probabilidades))
+        conteo_origenes = pd.Series(origenes).value_counts()
+        self.metricas.update({
+            "n_folds": pliegues_evaluados,
+            "validacion": "walk-forward por fecha completa",
+            "cobertura_umbral_validacion": {
+                origen: round(float(conteo_origenes.get(origen, 0) / len(origenes)), 4)
+                for origen in ("producto", "categoria", "global")
+            },
+        })
+
+        # Artefacto final: usa todo el historial disponible, solo después de
+        # haber medido de forma temporal los pliegues anteriores.
+        self._fijar_umbrales(datos)
+        y = self._a_clase(datos)
+        if y.nunique() < len(CLASES):
+            raise ValueError(
+                "El historial no contiene ejemplos suficientes de Baja, Media y Alta."
+            )
+        X = self._construir_features(datos, entrenando=True)
+        self.modelo = self._entrenar_lgbm(X, y, self.random_state)
+        self.metricas.update({
+            "n_train": int(len(y)),
+            "umbrales_global": [round(x, 4) for x in self.umbrales_global],
+            "productos_con_umbral_propio": len(self.umbrales_producto),
+            "categorias_con_umbral_propio": len(self.umbrales_categoria),
+            "hiperparametros": dict(LGBM_PARAMS),
+            "algoritmo": "LightGBM multiclase",
+        })
+        importancia = sorted(
+            zip(self.feature_names, self.modelo.feature_importances_),
+            key=lambda item: item[1], reverse=True,
+        )
+        self.importancias = [
+            {"variable": nombre, "importancia": round(float(valor), 4)}
+            for nombre, valor in importancia[:10]
+        ]
+
+        self.historial_producto = {
+            producto: grupo.set_index("fecha")["cantidad"].astype(float).to_dict()
+            for producto, grupo in diario.groupby("producto")
+        }
+        self.perfil_producto = diario.groupby("producto")["cantidad"].mean().to_dict()
+        self.perfil_categoria = (
+            diario.groupby("categoria")["cantidad"].mean().to_dict()
+            if "categoria" in diario else {}
+        )
+        self.media_global = float(diario["cantidad"].mean())
+        return self.metricas
+
+    # Predicción ----------------------------------------------------------
+
+    def _historial_contexto(self, contexto):
+        producto = contexto.get("producto")
+        fecha = pd.Timestamp(contexto.get("fecha", pd.Timestamp.today()))
+        historial = self.historial_producto.get(producto, {})
+        respaldo = self.perfil_producto.get(
+            producto,
+            self.perfil_categoria.get(contexto.get("categoria"), self.media_global),
+        )
+        serie = pd.Series(historial, dtype=float)
+
+        def valor(dia):
+            return float(serie.get(dia, respaldo))
+
+        previos = pd.Series([valor(fecha - timedelta(days=i)) for i in range(1, 29)])
+        return {
+            "lag_1": valor(fecha - timedelta(days=1)),
+            "lag_7": valor(fecha - timedelta(days=7)),
+            "lag_14": valor(fecha - timedelta(days=14)),
+            "lag_28": valor(fecha - timedelta(days=28)),
+            "rolling_7_mean": float(previos.iloc[:7].mean()),
+            "rolling_14_mean": float(previos.iloc[:14].mean()),
+            "rolling_28_mean": float(previos.mean()),
+            "rolling_7_std": float(previos.iloc[:7].std(ddof=0)),
+            "media_historica": (
+                float(serie[serie.index < fecha].mean()) if not serie.empty else respaldo
+            ),
+            "volatilidad_historica": (
+                float(serie[serie.index < fecha].std(ddof=0))
+                if len(serie) > 1 else 0.0
+            ),
+        }
+
+    def _preparar_contextos(self, contextos):
+        filas = []
+        for contexto in contextos:
+            fila = dict(contexto)
+            fila.update({
+                clave: valor for clave, valor in self._fecha_features(
+                    fila.get("fecha", pd.Timestamp.today())
+                ).items() if clave not in fila
+            })
+            fila.update(self._historial_contexto(fila))
+            filas.append(fila)
+        return pd.DataFrame(filas)
+
+    def diagnostico_producto_nuevo(self, categoria, contexto_dia):
+        return self.predecir({
+            "producto": "__producto_nuevo__", "categoria": categoria, **contexto_dia,
+        })
 
     def predecir(self, contexto):
-        if self.modelo is None:
-            raise ValueError("El modelo no está entrenado.")
-        X = self._construir_features(pd.DataFrame([contexto]), entrenando=False)
-        clase = self.modelo.predict(X)[0]
-        probs = self.modelo.predict_proba(X)[0]
-        orden = list(self.modelo.classes_)
-        return {"prioridad": clase,
-                "confianza": round(float(probs[orden.index(clase)]), 4),
-                "probabilidades": {c: round(float(probs[orden.index(c)]), 4)
-                                   for c in orden}}
+        return self.predecir_lote([contexto])[0]
 
-    def predecir_lote(self, contextos: list) -> list:
-        """
-        Igual que predecir(), pero para MUCHOS contextos en una sola
-        llamada al modelo, no una por una. Un RandomForestClassifier
-        calibrado dispara su propia maquinaria de paralelismo
-        (joblib.Parallel) en CADA llamada a predict_proba() — sobre un
-        horizonte con muchos días × productos, eso significa cientos
-        de invocaciones de Parallel, cada una con su propio overhead
-        de memoria. Predecir todo junto colapsa eso a una sola
-        invocación, mucho más liviano — esto fue lo que causó un
-        Out of Memory en producción (Render, plan gratis, 512MB RAM).
-        """
+    def predecir_lote(self, contextos):
         if self.modelo is None:
             raise ValueError("El modelo no está entrenado.")
         if not contextos:
             return []
-        X = self._construir_features(pd.DataFrame(contextos), entrenando=False)
+        X = self._construir_features(
+            self._preparar_contextos(contextos), entrenando=False
+        )
         clases = self.modelo.predict(X)
-        probs = self.modelo.predict_proba(X)
+        probabilidades = self.modelo.predict_proba(X)
         orden = list(self.modelo.classes_)
-
-        resultados = []
-        for i, clase in enumerate(clases):
-            fila_probs = probs[i]
-            resultados.append({
+        return [
+            {
                 "prioridad": clase,
-                "confianza": round(float(fila_probs[orden.index(clase)]), 4),
-                "probabilidades": {c: round(float(fila_probs[orden.index(c)]), 4)
-                                   for c in orden},
-            })
-        return resultados
-
-    # ────────────────────────────────────────
-    # 7. PERSISTENCIA
-    # ────────────────────────────────────────
+                "confianza": round(float(probabilidades[i, orden.index(clase)]), 4),
+                "probabilidades": {
+                    etiqueta: round(float(probabilidades[i, orden.index(etiqueta)]), 4)
+                    for etiqueta in orden
+                },
+            }
+            for i, clase in enumerate(clases)
+        ]
 
     def guardar(self, ruta):
-        import joblib, os
+        import joblib
         joblib.dump(self, ruta)
         from services.storage_service import subir
         subir(ruta, os.path.basename(ruta))
 
     @staticmethod
     def cargar(ruta):
-        import joblib, os
+        import joblib
         from services.storage_service import asegurar_local
         asegurar_local(os.path.basename(ruta), ruta)
         return joblib.load(ruta)
