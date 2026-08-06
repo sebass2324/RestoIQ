@@ -1,31 +1,3 @@
-"""
-services/regresion_lineal_img.py
-
-Genera el gráfico Real vs. Predicho del modelo GANADOR (el que
-realmente se usa en producción — RestoIQ, Regresión Lineal o Naive,
-lo que haya ganado por WAPE ese entrenamiento) con la línea de ajuste
-OLS + banda de confianza al 95% (lo que dibuja sns.regplot), la
-diagonal de predicción exacta (y=x) como referencia, y el R² como
-resumen numérico del ajuste.
-
-Consolidado a UN SOLO gráfico (antes convivía con un scatter
-interactivo de Chart.js que mostraba lo mismo cuando el ganador era
-Regresión Lineal — redundante). Este reemplaza a ambos.
-
-Se ejecuta UNA SOLA VEZ por entrenamiento (llamado desde el blueprint,
-justo después de SalesModel.entrenar()) — NUNCA en el hot path de una
-request de usuario. Mismo principio de arquitectura que
-matriz_confusion_img.py.
-
-Buenas prácticas de recursos aplicadas:
-  - Backend 'Agg' (sin display, no intenta abrir una ventana).
-  - Los puntos ya vienen sub-muestreados a ≤500 (ver sales_model.py,
-    'scatter') — el gráfico no reprocesa miles de filas.
-  - plt.close(fig) explícito: sin esto, matplotlib acumula figuras en
-    memoria durante la vida del proceso de Flask (que es de larga
-    duración) — una fuga de memoria lenta pero real en un servidor
-    que reentrena modelos repetidamente.
-"""
 
 import matplotlib
 matplotlib.use("Agg")

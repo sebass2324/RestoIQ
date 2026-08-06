@@ -226,6 +226,8 @@ def _predecir_horizonte(modelo: ModeloAbastecimiento, df: pd.DataFrame, dias: in
         for prod in productos:
             contextos.append({
                 **feats_dia,
+                "fecha":               fecha,
+                "producto":            prod,
                 "categoria":           cat_por_producto.get(prod),
                 "precio":              precio_por_producto.get(prod),
                 "promocion":           0,

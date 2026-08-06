@@ -40,6 +40,20 @@
     </a>
   </div>
 
+{% elif datos.estado == "prediccion_pendiente" %}
+
+  <div class="gate-card">
+    <div class="gate-icon"><i data-lucide="loader"></i></div>
+    <div class="gate-text">
+      <h3>Todavía no hay una predicción generada</h3>
+      <p>Tus datos están listos, pero el modelo de demanda no se entrenó todavía (o tu historial cambió desde el último entrenamiento). Andá a Predicción de demanda para generarla — puede tardar un momento la primera vez, según cuánto historial tengas.</p>
+    </div>
+    <a href="{{ url_for('prediccion.index') }}" class="btn-upload">
+      <i data-lucide="trending-up"></i>
+      Ir a Predicción de demanda
+    </a>
+  </div>
+
 {% else %}
 
   <!-- ══ FRANJA SUPERIOR — decisiones inmediatas ══ -->

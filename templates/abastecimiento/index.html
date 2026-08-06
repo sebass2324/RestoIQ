@@ -2,7 +2,7 @@
 
 {% block titulo %}Prioridad de abastecimiento{% endblock %}
 {% block titulo_pagina %}Prioridad de abastecimiento{% endblock %}
-{% block subtitulo_pagina %}Qué productos vigilar hoy · Modelo independiente (RandomForest){% endblock %}
+{% block subtitulo_pagina %}Qué productos vigilar hoy · Modelo independiente (LightGBM){% endblock %}
 
 {% block topbar_acciones %}
 <select id="selectorFecha" class="date-select"></select>
@@ -191,6 +191,37 @@
         <button class="btn-secundario" style="margin-top:.8rem;width:100%;" onclick="abrirMatriz()">
           Ver matriz de confusión
         </button>
+
+        <details style="margin-top:.9rem;font-size:.82rem;color:var(--gray-mid);">
+          <summary style="cursor:pointer;font-weight:600;color:inherit;">
+            ¿Qué significan estos números?
+          </summary>
+          <div style="margin-top:.6rem;line-height:1.5;">
+            <p style="margin:.4rem 0;">
+              <strong>Accuracy</strong> — de cada 100 predicciones que hace el sistema,
+              cuántas acierta en total. Un valor de <em>0.98</em> significa que acierta
+              98 de cada 100 veces.
+            </p>
+            <p style="margin:.4rem 0;">
+              <strong>Precision</strong> — cuando el sistema marca un producto como
+              urgente, qué tan seguido tiene razón. Evita "falsas alarmas" de
+              abastecimiento.
+            </p>
+            <p style="margin:.4rem 0;">
+              <strong>Recall</strong> — de todos los productos que en realidad eran
+              urgentes, cuántos logró detectar el sistema a tiempo. Evita que se
+              te "escape" un producto crítico.
+            </p>
+            <p style="margin:.4rem 0;">
+              <strong>F1 Macro</strong> — un balance entre Precision y Recall, tratando
+              por igual la prioridad Alta, Media y Baja. Es el número más completo
+              para saber si el modelo es confiable en general.
+            </p>
+            <p style="margin:.6rem 0 0;font-style:italic;">
+              En los cuatro casos, un valor más cercano a 1.00 es mejor.
+            </p>
+          </div>
+        </details>
       </div>
 
       <div class="abs-card">
@@ -430,13 +461,13 @@ function flechaDelta(valor) {
 }
 
 function pintarMetricas(m) {
-  document.getElementById("mAcc").innerHTML = (m.accuracy != null ? (m.accuracy*100).toFixed(1) + "%" : "—")
+  document.getElementById("mAcc").innerHTML = (m.accuracy != null ? m.accuracy.toFixed(4) : "—")
     + (m.deltas ? flechaDelta(m.deltas.accuracy) : "");
   document.getElementById("mPrecision").textContent = m.precision_macro != null
-    ? (m.precision_macro * 100).toFixed(1) + "%" : "—";
+    ? m.precision_macro.toFixed(4) : "—";
   document.getElementById("mRecall").textContent = m.recall_macro != null
-    ? (m.recall_macro * 100).toFixed(1) + "%" : "—";
-  document.getElementById("mF1").innerHTML = (m.f1_macro != null ? m.f1_macro.toFixed(3) : "—")
+    ? m.recall_macro.toFixed(4) : "—";
+  document.getElementById("mF1").innerHTML = (m.f1_macro != null ? m.f1_macro.toFixed(4) : "—")
     + (m.deltas ? flechaDelta(m.deltas.f1_macro) : "");
 }
 

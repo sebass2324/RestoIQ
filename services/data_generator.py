@@ -178,6 +178,89 @@ PERFILES = {
         "factor_mes": {1:0.90, 2:0.92, 3:0.95, 4:1.00, 5:1.05, 6:1.10,
                        7:1.15, 8:1.10, 9:1.00, 10:1.00, 11:1.05, 12:1.20},
     },
+
+    # ── El Chamo Burger — caso de estudio real de la tesis ──
+    # Durán, Guayas. Menú, precios y patrones de venta salen de la
+    # entrevista al propietario (Anexo — Instrumento de Recolección
+    # de Datos), no son inventados. demanda_base por producto refleja
+    # lo que dijo el dueño: hamburguesas y pepitos "tienen más salida",
+    # cachapas/arepas especiales rotan menos.
+    "elchamoburger": {
+        "nombre": "El Chamo Burger (Durán)",
+        "productos": [
+            # Hamburguesas — Clásicas
+            ("La Sencilla", 2.00, 10, None),
+            ("La Especial", 2.25, 6, None),
+            ("La Sub-Especial", 2.75, 3, None),
+            ("La Completa", 3.00, 8, None),
+            # Hamburguesas — Otras Protagonistas
+            ("Pollo Sencilla", 2.75, 3, None),
+            ("Pollo Completa", 3.25, 2, None),
+            ("Lomo Sencilla", 3.25, 6, None),
+            ("Lomo Completa", 3.75, 2, None),
+            ("Chancho Sencilla", 2.75, 2, None),
+            ("Chancho Completa", 3.25, 2, None),
+            # Hamburguesas — Las Gigantes de la Casa
+            ("Doble Carne", 3.75, 2, None),
+            ("La Monster", 4.25, 1, None),
+            ("La Trifásica", 6.00, 1, None),
+            # Pepito
+            ("Pepito Sencillo", 7.00, 6, None),
+            ("Pepito Completo", 8.50, 5, None),
+            ("Pepito Pollo", 8.00, 2, None),
+            ("Pepito Carne", 9.00, 2, None),
+            ("Pepito Monster", 11.00, 1, None),
+            ("Monstrico", 3.50, 2, None),
+            # Sabor Ecuatoriano — Papas
+            ("Salchipapa", 2.00, 3, None),
+            ("Papipollo", 2.50, 2, None),
+            ("Papichancho", 3.50, 2, None),
+            ("Papaparillera", 8.00, 1, None),
+            ("Porción de Papa", 1.50, 2, None),
+            # Sabor Ecuatoriano — Bandejitas
+            ("Bandejita Con Todo", 3.50, 1, None),
+            ("Bandejita La Bestia", 5.00, 1, None),
+            # Arepas Venecas
+            ("Arepa Dominó", 2.50, 1, None),
+            ("Arepa Catira", 3.50, 1, None),
+            ("Arepa Reina Pepiada", 3.50, 1, None),
+            ("Arepa Rumbera", 3.50, 5, None),
+            ("Arepa Pelúa", 3.00, 1, None),
+            ("Arepa Llanera", 3.50, 1, None),
+            ("Arepa Sifrina", 3.00, 1, None),
+            ("Arepa Perico", 2.50, 1, None),
+            # Patacones Burguer
+            ("Patacón Carne Mechada", 4.00, 1, None),
+            ("Patacón Pollo Mechado", 4.00, 1, None),
+            ("Patacón Carne Hamburguesa", 3.50, 1, None),
+            ("Patacón Chancho", 4.50, 1, None),
+            ("Patacón Parrillero", 4.50, 1, None),
+            # Cachapas — rotación baja, confirmado por el dueño
+            ("Cachapa Viuda", 1.50, 1, None),
+            ("Cachapa Sencilla", 4.50, 1, None),
+            ("Cachapa Chorizo", 6.50, 1, None),
+            ("Cachapa Pollo Mechado", 6.50, 1, None),
+            ("Cachapa Tocineta", 7.00, 1, None),
+            ("Cachapa Chancho", 7.50, 1, None),
+            ("Cachapa Carne Mechada", 6.50, 1, None),
+            ("Cachapa Parrillera", 11.50, 1, None),
+            ("Cachapa Llanera", 7.50, 1, None),
+            ("Cachapa Chuleta Ahumada", 8.00, 1, None),
+            # Hotdog Jumbo
+            ("Jumbo Sencillo", 1.50, 8, None),
+            ("Jumbo Especial", 2.00, 6, None),
+            ("Jumbo Mega", 2.50, 2, None),
+            ("Choriperro", 2.00, 2, None),
+        ],
+        # Ranking real del dueño: sábado > viernes > domingo > martes >
+        # miércoles > jueves > lunes. "El doble" entre mejor y peor día
+        # → sábado (1.40) es exactamente el doble de lunes (0.70).
+        "factor_dia": {0:0.70, 1:0.80, 2:0.77, 3:0.75, 4:1.15, 5:1.40, 6:1.10},
+        # Picos reales que mencionó el dueño: día de la madre (mayo),
+        # fiestas de Durán (octubre), diciembre. El resto del año, parejo.
+        "factor_mes": {1:0.90, 2:0.90, 3:0.92, 4:0.95, 5:1.20, 6:0.95,
+                       7:0.95, 8:0.95, 9:0.95, 10:1.20, 11:0.95, 12:1.30},
+    },
 }
 
 
@@ -238,7 +321,62 @@ CATEGORIAS = {
         "Producto D": "Regulares", "Producto F": "Regulares", "Producto G": "Regulares",
         "Producto C": "Especiales", "Producto E": "Especiales", "Producto H": "Especiales",
     },
+
+    "elchamoburger": {
+        "La Sencilla": "Hamburguesas", "La Especial": "Hamburguesas",
+        "La Sub-Especial": "Hamburguesas", "La Completa": "Hamburguesas",
+        "Pollo Sencilla": "Hamburguesas", "Pollo Completa": "Hamburguesas",
+        "Lomo Sencilla": "Hamburguesas", "Lomo Completa": "Hamburguesas",
+        "Chancho Sencilla": "Hamburguesas", "Chancho Completa": "Hamburguesas",
+        "Doble Carne": "Hamburguesas", "La Monster": "Hamburguesas", "La Trifásica": "Hamburguesas",
+        "Pepito Sencillo": "Pepito", "Pepito Completo": "Pepito", "Pepito Pollo": "Pepito",
+        "Pepito Carne": "Pepito", "Pepito Monster": "Pepito", "Monstrico": "Pepito",
+        "Salchipapa": "Papas", "Papipollo": "Papas", "Papichancho": "Papas",
+        "Papaparillera": "Papas", "Porción de Papa": "Papas",
+        "Bandejita Con Todo": "Bandejitas", "Bandejita La Bestia": "Bandejitas",
+        "Arepa Dominó": "Arepas", "Arepa Catira": "Arepas", "Arepa Reina Pepiada": "Arepas",
+        "Arepa Rumbera": "Arepas", "Arepa Pelúa": "Arepas", "Arepa Llanera": "Arepas",
+        "Arepa Sifrina": "Arepas", "Arepa Perico": "Arepas",
+        "Patacón Carne Mechada": "Patacones", "Patacón Pollo Mechado": "Patacones",
+        "Patacón Carne Hamburguesa": "Patacones", "Patacón Chancho": "Patacones",
+        "Patacón Parrillero": "Patacones",
+        "Cachapa Viuda": "Cachapas", "Cachapa Sencilla": "Cachapas", "Cachapa Chorizo": "Cachapas",
+        "Cachapa Pollo Mechado": "Cachapas", "Cachapa Tocineta": "Cachapas",
+        "Cachapa Chancho": "Cachapas", "Cachapa Carne Mechada": "Cachapas",
+        "Cachapa Parrillera": "Cachapas", "Cachapa Llanera": "Cachapas",
+        "Cachapa Chuleta Ahumada": "Cachapas",
+        "Jumbo Sencillo": "Hotdogs", "Jumbo Especial": "Hotdogs",
+        "Jumbo Mega": "Hotdogs", "Choriperro": "Hotdogs",
+    },
 }
+
+
+# ════════════════════════════════════════════════════════════
+# CLÁSICO DEL ASTILLERO (Barcelona SC vs. Emelec) — solo El Chamo Burger
+# ════════════════════════════════════════════════════════════
+# Según el dueño: partido de TARDE (4-6pm) → más ventas.
+# Partido de NOCHE → menos ventas (la gente se queda viendo en casa,
+# compite con las horas fuertes del local, 4pm-11pm).
+#
+# IMPORTANTE — esto NO es una feature del modelo predictivo (ver
+# sales_model.py): ocurre solo 2-3 veces al año, muy poca evidencia
+# para que un modelo la aprenda de forma confiable (riesgo real de
+# sobreajuste con una variable casi siempre en 0). Se usa ÚNICAMENTE
+# acá, para que el DATASET HISTÓRICO sea más realista esos días
+# puntuales — el modelo nunca ve esta variable.
+#
+# Lista PARCIAL a propósito: son las únicas fechas y horas que pude
+# verificar con fuente real (notas de prensa). Partidos de 2022-2023
+# no siempre publican la hora exacta de forma consultable — se
+# dejaron afuera en vez de inventar un horario.
+CLASICOS_ASTILLERO = {
+    "2024-10-20": "tarde",   # 17:00, Barcelona vs. Emelec (primicias.ec)
+    "2025-09-14": "tarde",   # 17:30, Emelec vs. Barcelona (primicias.ec)
+    "2026-03-08": "noche",   # 18:00, Barcelona vs. Emelec (espn)
+    "2026-07-12": "noche",   # 18:10, Emelec vs. Barcelona (ecuavisa)
+}
+F_CLASICO_TARDE = 1.30
+F_CLASICO_NOCHE = 0.80
 
 
 # ════════════════════════════════════════════════════════════
@@ -370,13 +508,27 @@ class DataGenerator:
             feats = _features_temporales(fecha)
 
             # Factor extra por feriado: más ventas en heladería/restaurante,
-            # menos en cafetería (que depende del tráfico laboral)
+            # menos en cafetería. El Chamo Burger queda neutro (1.0): el
+            # dueño confirmó que un feriado vende "más o menos igual" a un
+            # fin de semana normal, no un extra encima de eso.
             f_feriado = 1.0
-            if feats["es_feriado"] or feats["es_finde"]:
+            if self.tipo == "elchamoburger":
+                f_feriado = 1.0
+            elif feats["es_feriado"] or feats["es_finde"]:
                 f_feriado = 1.25 if self.tipo in ("restaurante", "pizzeria", "heladeria") else 0.80
 
             # Factor de quincena: leve aumento de demanda
             f_quincena = 1.10 if feats["es_quincena"] else 1.0
+
+            # Clásico del Astillero — solo El Chamo Burger, solo fechas
+            # verificadas (ver CLASICOS_ASTILLERO más arriba)
+            f_clasico = 1.0
+            if self.tipo == "elchamoburger":
+                tipo_partido = CLASICOS_ASTILLERO.get(fecha.strftime("%Y-%m-%d"))
+                if tipo_partido == "tarde":
+                    f_clasico = F_CLASICO_TARDE
+                elif tipo_partido == "noche":
+                    f_clasico = F_CLASICO_NOCHE
 
             for nombre, precio, demanda_base, temporada in productos:
 
@@ -404,7 +556,7 @@ class DataGenerator:
                 demanda_esperada = (
                     demanda_base
                     * f_dia * f_mes * f_temp
-                    * f_feriado * f_quincena
+                    * f_feriado * f_quincena * f_clasico
                     * tendencia * evento_especial
                     * f_promo * f_descuento
                 )

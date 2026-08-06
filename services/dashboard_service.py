@@ -146,14 +146,18 @@ def obtener_kpis_usuario(user_id: int):
 # Datos de demanda para el Dashboard (Predicción de Demanda y
 # Planificación de Abastecimiento) — no gestión de inventario.
 #
-# NOTA DE ARQUITECTURA: _cargar_dataframe_usuario y
-# _obtener_o_entrenar_modelo son una copia intencional de la lógica
-# equivalente en blueprints/prediccion.py. Se decidió (sesión de
-# rediseño del Dashboard) NO crear un service de orquestación
-# compartido entre Dashboard y Predicción, para que evolucionen sin
-# acoplarse — a costa de mantener esta lógica en dos lugares. Si
-# alguna vez se corrige un bug en la carga de datos o el
-# reentrenamiento, hay que replicarlo aquí también.
+# NOTA DE ARQUITECTURA: _cargar_dataframe_usuario es una copia
+# intencional de la lógica equivalente en blueprints/prediccion.py —
+# se decidió NO crear un service de orquestación compartido, para que
+# Dashboard y Predicción evolucionen sin acoplarse.
+#
+# _obtener_modelo_cacheado NO es una copia de la lógica de
+# prediccion.py — a propósito NUNCA entrena, solo lee un modelo ya
+# guardado. Entrenar es responsabilidad exclusiva de /prediccion; si
+# el Dashboard entrenara también, dos pestañas abiertas a la vez (o
+# una recarga mientras un entrenamiento previo sigue en curso)
+# disparan entrenamientos duplicados en paralelo — con datasets
+# grandes (minutos, no segundos) esto se nota mucho.
 # ════════════════════════════════════════════════════════════════
 
 def _ruta_modelo(user_id: int) -> str:
@@ -189,55 +193,28 @@ def _cargar_dataframe_usuario(user_id: int):
     return df
 
 
-def _obtener_o_entrenar_modelo(user_id: int, df: pd.DataFrame, config: ConfiguracionAnalisis) -> SalesModel:
+def _obtener_modelo_cacheado(user_id: int, hash_actual: str):
     """
-    Devuelve un SalesModel listo para predecir (cargado desde caché o
-    recién entrenado). A diferencia de la versión en prediccion.py, no
-    hace falta devolver un dict de métricas aparte: todo lo que
-    necesita el Módulo de Confianza (mae, mape, holdout, top_features)
-    viaja dentro de model.metricas, ya sea que el modelo se acabe de
-    entrenar o se haya cargado desde el .pkl cacheado.
-    """
-    dataset = DatasetUsuario.query.filter_by(user_id=user_id).first()
-    if dataset is None:
-        raise ValueError("No hay datos limpios para este usuario. Sube un archivo primero.")
+    Lee el modelo YA entrenado, si existe y coincide con el hash
+    actual. NUNCA reentrena — esa responsabilidad es exclusiva de
+    /prediccion (mismo principio que ya usan _resumen_modelo_prediccion
+    y _resumen_modelo_clasificacion en dashboard.py).
 
-    hash_actual = combinar_hash_config(dataset.hash, config)
+    Antes esta función SÍ reentrenaba si el hash no coincidía — con
+    datasets chicos era instantáneo y pasaba desapercibido, pero con
+    datasets grandes (minutos de entrenamiento) cada visita/recarga
+    del Dashboard mientras un entrenamiento anterior seguía en curso
+    disparaba OTRO entrenamiento en paralelo, sin terminar nunca.
+    """
     registro_modelo = ModeloML.query.filter_by(user_id=user_id).first()
     ruta = _ruta_modelo(user_id)
 
-    hash_desactualizado = (
-        config.reentrenar_automatico
-        and (registro_modelo is None or registro_modelo.dataset_hash != hash_actual)
-    )
-    necesita_reentrenar = (
-        registro_modelo is None
-        or not os.path.exists(ruta)
-        or hash_desactualizado
-    )
+    if registro_modelo is None or not os.path.exists(ruta):
+        return None
+    if registro_modelo.dataset_hash != hash_actual:
+        return None
 
-    if not necesita_reentrenar:
-        return SalesModel.cargar(ruta)
-
-    model = SalesModel()
-    metricas = model.entrenar(df, config=config, verbose=False)
-
-    os.makedirs(MODELOS_DIR, exist_ok=True)
-    model.guardar(ruta)
-
-    if registro_modelo is None:
-        registro_modelo = ModeloML(user_id=user_id, ruta_pkl=ruta, dataset_hash=hash_actual)
-        db.session.add(registro_modelo)
-
-    registro_modelo.dataset_hash        = hash_actual
-    registro_modelo.estrategia          = metricas.get("estrategia")
-    registro_modelo.mae                 = metricas.get("mae")
-    registro_modelo.mape                = metricas.get("mape")
-    registro_modelo.ruta_pkl            = ruta
-    registro_modelo.fecha_entrenamiento = datetime.utcnow()
-    db.session.commit()
-
-    return model
+    return SalesModel.cargar(ruta)
 
 
 def obtener_datos_demanda_usuario(user_id: int) -> dict:
@@ -267,7 +244,14 @@ def obtener_datos_demanda_usuario(user_id: int) -> dict:
     if df is None:
         return {"estado": "sin_datos"}
 
-    model = _obtener_o_entrenar_modelo(user_id, df, config)
+    hash_actual = combinar_hash_config(dataset.hash, config)
+    model = _obtener_modelo_cacheado(user_id, hash_actual)
+    if model is None:
+        # No hay modelo entrenado todavía (o quedó desactualizado) —
+        # el Dashboard NO entrena, solo avisa. Entrenar es
+        # responsabilidad de /prediccion.
+        return {"estado": "prediccion_pendiente"}
+
     registro_modelo = ModeloML.query.filter_by(user_id=user_id).first()
     fecha_entrenamiento = registro_modelo.fecha_entrenamiento if registro_modelo else None
 
@@ -305,8 +289,10 @@ def obtener_datos_demanda_usuario(user_id: int) -> dict:
     metricas = model.metricas or {}
 
     # Confiabilidad en etiqueta simple, para el Dashboard "resumen
-    # ejecutivo" (el detalle numérico completo vive en /prediccion)
-    precision_pct = round(100 - metricas["mape"], 1) if metricas.get("mape") is not None else None
+    # ejecutivo" (el detalle numérico completo vive en /prediccion).
+    # nmae es MAE normalizado 0-1 (0 = error nulo) — se invierte a
+    # "precisión" 0-100 para que sea intuitivo acá (más alto, mejor).
+    precision_pct = round(100 - (metricas["nmae"] * 100), 1) if metricas.get("nmae") is not None else None
     if precision_pct is None:
         confiabilidad_label = "No disponible"
     elif precision_pct >= 80:
@@ -337,7 +323,7 @@ def obtener_datos_demanda_usuario(user_id: int) -> dict:
         # ── Franja inferior: ¿puedo confiar? ──
         "confianza": {
             "mae":             metricas.get("mae"),
-            "mape":            metricas.get("mape"),
+            "nmae":            metricas.get("nmae"),
             "precision_pct":   precision_pct,
             "top_features":    metricas.get("top_features", []),
             "holdout":         metricas.get("holdout"),
