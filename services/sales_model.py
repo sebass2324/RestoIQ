@@ -21,12 +21,7 @@ UMBRAL_DIAS_ML = 90
 MINIMO_FILAS_LGBM = 30
 
 # ── Features temporales ──
-# Calculadas de la fecha. dia_semana/dia_mes/mes/semana_anio/es_finde/
-# es_puente/es_quincena siempre entran. es_feriado/vispera_feriado son
-# opcionales (el negocio decide si le interesan), pero NUNCA dependen
-# de una columna del archivo del usuario — se calculan internamente
-# con la lista de feriados, no hace falta que el dueño tenga esa
-# columna en su Excel.
+
 FEATURES_TEMPORALES = [
     "dia_semana", "dia_mes", "mes", "semana_anio",
     "es_finde", "es_puente", "es_quincena",
@@ -45,28 +40,23 @@ FEATURES_HISTORICAS = [
 ]
 
 # ── Features del producto ──
-# Identidad del producto. NO son "encoded" con LabelEncoder — son
-# categóricas NATIVAS de pandas/LightGBM (dtype 'category'), el
-# algoritmo las agrupa solo, sin necesidad de convertirlas a número
-# a mano primero (ver _preparar_features).
+
 FEATURES_PRODUCTO = ["producto", "categoria"]
 
 # ── Features comerciales ──
-# precio: se agrega si el archivo del usuario la trae, sin necesidad
-# de configuración (no es una preferencia, es un dato que existe o no).
-# promocion/descuento_pct/es_evento_especial: además de existir en el
-# archivo, el negocio tiene que haber pedido considerarlas.
-FEATURES_COMERCIALES_SI_EXISTEN = ["precio"]
+
+FEATURES_COMERCIALES_SI_EXISTEN = [
+    "precio",
+    "lluvia_manana_mm", "temp_manana_promed",
+    "lluvia_nocturna_mm", "temp_nocturna_promed",
+]
 FEATURES_COMERCIALES_OPCIONALES = {
     "promocion":          "considerar_promociones",
     "descuento_pct":      "considerar_descuentos",
     "es_evento_especial": "considerar_eventos",
 }
 
-# Variables categóricas "de bandera" — se le avisan a LightGBM
-# explícitamente (no son cantidades continuas reales). producto y
-# categoria NO están acá: ya son dtype 'category', LightGBM las
-# detecta solas.
+
 FEATURES_CATEGORICAS_FLAG = [
     "dia_semana", "dia_mes", "mes", "semana_anio", "es_finde", "es_puente", "es_quincena",
     "es_feriado", "vispera_feriado", "promocion", "es_evento_especial",
@@ -89,6 +79,10 @@ class SalesModel:
         self.metricas             = {}
         self.fecha_ultimo_dato    = None
         self.feriados             = self._cargar_feriados()
+        self.clima_promedio = {
+            "lluvia_manana_mm": 0.0, "temp_manana_promed": 27.0,
+            "lluvia_nocturna_mm": 0.0, "temp_nocturna_promed": 26.0,
+        }
         self.features              = FEATURES_TEMPORALES + FEATURES_HISTORICAS + FEATURES_PRODUCTO
 
     # Calendarios externos
@@ -135,6 +129,9 @@ class SalesModel:
         df = df.copy()
         columnas_negocio = [c for c in ("promocion", "descuento_pct", "es_evento_especial")
                             if c in df.columns]
+        columnas_clima = [c for c in ("lluvia_manana_mm", "temp_manana_promed",
+                                       "lluvia_nocturna_mm", "temp_nocturna_promed")
+                          if c in df.columns]
 
         piezas = []
         for producto, grupo in df.groupby("producto"):
@@ -150,6 +147,13 @@ class SalesModel:
 
             for col in columnas_negocio:
                 pieza[col] = grupo[col].reindex(rango, fill_value=0).values
+
+            # clima: rellenar con el promedio, NUNCA con 0 — un día sin
+            # dato no significa "0°C" ni "0mm", significa "no sabemos",
+            # y el promedio es la mejor estimación neutral disponible.
+            for col in columnas_clima:
+                serie = grupo[col].reindex(rango)
+                pieza[col] = serie.fillna(serie.mean()).values
 
             # variables de historial: lags
             for lag in (1, 7, 28):
@@ -193,11 +197,22 @@ class SalesModel:
         )
         self.categorias_categoria = sorted(set(self.categoria_por_producto.values())) or ["Sin categoría"]
 
+        # Promedios de clima — respaldo si el pronóstico en vivo falla
+        # al predecir (API caída, sin internet). Nunca se deja una
+        # predicción sin poder correr por un problema de red externo.
+        self.clima_promedio = {
+            col: float(df[col].mean())
+            for col in ("lluvia_manana_mm", "temp_manana_promed", "lluvia_nocturna_mm", "temp_nocturna_promed")
+            if col in df.columns
+        }
+
         self.features = self._construir_features(df, config)
 
         # agregación diaria por producto
         agg_spec = {"cantidad": ("cantidad", "sum")}
-        for col, fn in (("promocion", "max"), ("descuento_pct", "mean"), ("es_evento_especial", "max")):
+        for col, fn in (("promocion", "max"), ("descuento_pct", "mean"), ("es_evento_especial", "max"),
+                        ("lluvia_manana_mm", "mean"), ("temp_manana_promed", "mean"),
+                        ("lluvia_nocturna_mm", "mean"), ("temp_nocturna_promed", "mean")):
             if col in df.columns:
                 agg_spec[col] = (col, fn)
 
@@ -540,7 +555,9 @@ class SalesModel:
         return fechas
 
     def _predecir_lgbm(self, fechas_futuras):
-        filas = [self._features_para_fecha_producto(fecha, producto)
+        clima_pronostico = self._obtener_clima_pronostico(fechas_futuras)
+
+        filas = [self._features_para_fecha_producto(fecha, producto, clima_pronostico)
                  for fecha in fechas_futuras for producto in self.productos]
         df_pred = pd.DataFrame(filas)
 
@@ -551,6 +568,27 @@ class SalesModel:
         df_pred["cantidad_pred"] = cantidades.astype(int)
         df_pred["fecha"] = df_pred["fecha"].dt.strftime("%Y-%m-%d")
         return df_pred[["fecha", "producto", "cantidad_pred"]]
+
+    def _obtener_clima_pronostico(self, fechas_futuras) -> dict:
+        """Una sola llamada a la API para TODAS las fechas a predecir —
+        nunca una por fecha/producto. {} si el clima no es feature
+        activa, o si la API falla (el respaldo se aplica más abajo)."""
+        cols_clima = ("lluvia_manana_mm", "temp_manana_promed",
+                      "lluvia_nocturna_mm", "temp_nocturna_promed")
+        if not any(c in self.features for c in cols_clima):
+            return {}
+        try:
+            from services.clima_service import obtener_pronostico
+            dias_necesarios = (max(fechas_futuras) - pd.Timestamp.now().normalize()).days + 2
+            df_clima = obtener_pronostico(dias=max(1, min(16, dias_necesarios)))
+            if df_clima is None:
+                return {}
+            return {
+                row["fecha"].strftime("%Y-%m-%d"): row[list(cols_clima)].to_dict()
+                for _, row in df_clima.iterrows()
+            }
+        except Exception:
+            return {}
 
     def _predecir_promedio_movil(self, fechas_futuras):
         filas = []
@@ -563,7 +601,7 @@ class SalesModel:
                 filas.append({"fecha": fecha.strftime("%Y-%m-%d"), "producto": producto, "cantidad_pred": cantidad})
         return pd.DataFrame(filas)
 
-    def _features_para_fecha_producto(self, fecha, producto):
+    def _features_para_fecha_producto(self, fecha, producto, clima_pronostico=None):
         feat = self._features_fecha(fecha)
         hist_prod = self.df_historial[self.df_historial["producto"] == producto].set_index("fecha")["cantidad"]
 
@@ -587,6 +625,20 @@ class SalesModel:
                 feat[col] = 0
         if "descuento_pct" in self.features:
             feat["descuento_pct"] = 0.0
+
+        # Clima: pronóstico real si está disponible; si no (fecha fuera
+        # del rango de 16 días, o la API falló), respaldo al promedio
+        # histórico de ESA variable puntual — nunca se cae la
+        # predicción entera por esto.
+        cols_clima = ("lluvia_manana_mm", "temp_manana_promed",
+                      "lluvia_nocturna_mm", "temp_nocturna_promed")
+        if any(c in self.features for c in cols_clima):
+            clima_pronostico = clima_pronostico or {}
+            valores_dia = clima_pronostico.get(fecha.strftime("%Y-%m-%d"), {})
+            for col in cols_clima:
+                if col in self.features:
+                    feat[col] = valores_dia.get(col, self.clima_promedio.get(col, 0.0))
+
         return feat
 
     # Persistencia

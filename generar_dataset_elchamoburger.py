@@ -1,7 +1,7 @@
 """
 generar_dataset_elchamoburger.py — corré esto desde la raíz de tu proyecto:
 
-    python generar_dataset_elchamoburger.py
+    python _
 
 Genera el dataset sintético de 4 años de El Chamo Burger (con el menú,
 precios y patrones reales que ya cargamos en data_generator.py) y lo

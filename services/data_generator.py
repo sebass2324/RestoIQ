@@ -497,6 +497,26 @@ class DataGenerator:
         factor_dia = self.perfil["factor_dia"]
         factor_mes = self.perfil["factor_mes"]
 
+        # Clima real de Durán — UNA sola llamada para todo el rango,
+        # no una por día. Solo para El Chamo Burger (el resto de los
+        # perfiles no tiene coordenadas reales asociadas). Si la API
+        # no responde (sin internet), se sigue generando el dataset
+        # igual, sin efecto de clima — nunca rompe la generación.
+        clima_por_fecha = {}
+        if self.tipo == "elchamoburger":
+            try:
+                from services.clima_service import obtener_clima_historico
+                df_clima = obtener_clima_historico(
+                    fecha_inicio.strftime("%Y-%m-%d"), fecha_fin.strftime("%Y-%m-%d")
+                )
+                if df_clima is not None:
+                    clima_por_fecha = {
+                        row["fecha"].strftime("%Y-%m-%d"): row.to_dict()
+                        for _, row in df_clima.iterrows()
+                    }
+            except Exception:
+                pass
+
         filas = []
         for i, fecha in enumerate(fechas):
             tendencia       = 1 + (i / len(fechas)) * (0.20 * self.años)
@@ -506,6 +526,21 @@ class DataGenerator:
 
             # Features temporales de contexto (las mismas que en producción)
             feats = _features_temporales(fecha)
+
+            clima_dia = clima_por_fecha.get(fecha.strftime("%Y-%m-%d"), {})
+
+            # Factor de clima — solo la lluvia NOCTURNA importa (4pm-11pm
+            # es el horario real del local, la lluvia de la mañana no
+            # afecta nada porque todavía está cerrado). Penalización
+            # leve, como confirmó el dueño en la entrevista — no un
+            # colapso de ventas, solo menos gente saliendo a caminar.
+            f_clima = 1.0
+            if self.tipo == "elchamoburger" and clima_dia:
+                lluvia_noche = clima_dia.get("lluvia_nocturna_mm") or 0
+                if lluvia_noche > 5:
+                    f_clima = 0.75   # lluvia fuerte durante el horario de operación
+                elif lluvia_noche > 0:
+                    f_clima = 0.90   # lluvia leve
 
             # Factor extra por feriado: más ventas en heladería/restaurante,
             # menos en cafetería. El Chamo Burger queda neutro (1.0): el
@@ -556,7 +591,7 @@ class DataGenerator:
                 demanda_esperada = (
                     demanda_base
                     * f_dia * f_mes * f_temp
-                    * f_feriado * f_quincena * f_clasico
+                    * f_feriado * f_quincena * f_clasico * f_clima
                     * tendencia * evento_especial
                     * f_promo * f_descuento
                 )
@@ -586,6 +621,15 @@ class DataGenerator:
                     fila["promocion"] = promocion_val
                 if self.incluir_descuentos:
                     fila["descuento_pct"] = descuento_val
+
+                # Clima real — las mismas 4 variables que causaron el
+                # ajuste en demanda_esperada arriba (f_clima), para que
+                # el modelo pueda aprender la relación real, no una
+                # columna sin conexión con la cantidad generada.
+                if clima_dia:
+                    for col in ("lluvia_manana_mm", "temp_manana_promed",
+                               "lluvia_nocturna_mm", "temp_nocturna_promed"):
+                        fila[col] = clima_dia.get(col)
 
                 filas.append(fila)
 
@@ -652,6 +696,10 @@ class DataGenerator:
     # ── I/O ──────────────────────────────────────────────────────────────
 
     def guardar_csv(self, ruta: str, sucio=False) -> pd.DataFrame:
+        import os
+        carpeta = os.path.dirname(ruta)
+        if carpeta:
+            os.makedirs(carpeta, exist_ok=True)
         df = self.generar(sucio=sucio)
         df.to_csv(ruta, index=False, encoding="utf-8")
         print(f"✅ Guardado: {ruta} ({len(df):,} filas)")
