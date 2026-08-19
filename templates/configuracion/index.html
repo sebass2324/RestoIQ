@@ -66,6 +66,7 @@
 
   .option-cards { display: grid; gap: 0.75rem; }
   .option-cards.cols-3 { grid-template-columns: repeat(3, 1fr); }
+  .option-cards.cols-2 { grid-template-columns: repeat(2, 1fr); }
 
   .option-card {
     position: relative;
@@ -197,6 +198,70 @@
     padding: 1.75rem;
     max-width: 720px;
   }
+
+  /* ── Eventos futuros (promoción/evento especial declarado) ── */
+  .eventos-card {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 1.75rem;
+    max-width: 720px;
+    margin-top: 1.5rem;
+  }
+  .eventos-card h4 {
+    font-size: .95rem;
+    font-weight: 700;
+    color: var(--dark);
+    margin: 0 0 .3rem;
+    display: flex;
+    align-items: center;
+    gap: .4rem;
+  }
+  .eventos-card .eventos-desc {
+    font-size: .8rem;
+    color: var(--gray-mid);
+    margin-bottom: .9rem;
+  }
+  .evento-form {
+    display: flex;
+    gap: .6rem;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    margin-bottom: 1rem;
+  }
+  .evento-form .campo { display: flex; flex-direction: column; gap: .25rem; }
+  .evento-form label { font-size: .72rem; font-weight: 600; color: var(--gray-mid); }
+  .evento-form input[type="date"],
+  .evento-form input[type="number"] {
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: .45rem .6rem; font-size: .82rem; width: 140px;
+  }
+  .evento-form .campo-check { flex-direction: row; align-items: center; gap: .4rem; padding-bottom: .5rem; }
+  .evento-form .campo-check label { font-size: .8rem; color: var(--dark); font-weight: 500; }
+  .btn-agregar-evento {
+    background: var(--purple); color: #fff; border: none; border-radius: 8px;
+    padding: .5rem 1rem; font-size: .82rem; font-weight: 600; cursor: pointer;
+  }
+  .btn-agregar-evento:hover { opacity: .9; }
+  .lista-eventos { display: flex; flex-direction: column; gap: .4rem; }
+  .evento-item {
+    display: flex; align-items: center; gap: .6rem;
+    padding: .55rem .8rem;
+    background: var(--gray-lt); border-radius: 8px;
+    font-size: .8rem;
+  }
+  .evento-item .evento-fecha { font-weight: 700; color: var(--dark); min-width: 90px; }
+  .evento-item .evento-tags { display: flex; gap: .35rem; flex: 1; flex-wrap: wrap; }
+  .evento-tag {
+    font-size: .7rem; font-weight: 600; padding: .15rem .55rem; border-radius: 99px;
+  }
+  .evento-tag.promo { background: #fef3c7; color: #92400e; }
+  .evento-tag.especial { background: #ede9fe; color: #7c3aed; }
+  .evento-item .btn-borrar-evento {
+    background: none; border: none; color: var(--gray-mid); cursor: pointer;
+    padding: .2rem; display: flex; align-items: center;
+  }
+  .evento-item .btn-borrar-evento:hover { color: #dc2626; }
 </style>
 {% endblock %}
 
@@ -216,8 +281,8 @@
     <div class="config-section">
       <p class="config-section-title"><i class="bi bi-calendar-range"></i> Horizonte de predicción</p>
       <p class="config-section-desc">¿Con cuántos días de anticipación quieres ver la demanda estimada?</p>
-      <div class="option-cards cols-3" data-group="horizonte_dias">
-        {% for valor, label, sub in [(7,"7 días","Corto plazo"), (14,"14 días","Quincenal"), (30,"30 días","Mensual")] %}
+      <div class="option-cards cols-2" data-group="horizonte_dias">
+        {% for valor, label, sub in [(7,"7 días","Corto plazo"), (14,"14 días","Quincenal")] %}
           <label class="option-card {% if (config.horizonte_dias if config else 7) == valor %}selected{% endif %}">
             <input type="radio" name="horizonte_dias" value="{{ valor }}"
                    {% if (config.horizonte_dias if config else 7) == valor %}checked{% endif %}>
@@ -336,18 +401,17 @@
     </div>
 
     <div class="config-section">
-      <p class="config-section-title"><i class="bi bi-bullseye"></i> Objetivo de tu análisis</p>
-      <p class="config-section-desc">Personaliza qué vista ves primero en Predicción — puedes cambiarla luego cuando quieras.</p>
-      <div class="option-cards cols-3" data-group="objetivo_analisis">
-        {% set objetivo_actual = (config.objetivo_analisis if config else "ingresos") %}
+      <p class="config-section-title"><i class="bi bi-layout-text-window"></i> Vista de predicción por defecto</p>
+      <p class="config-section-desc">¿Qué quieres ver primero al entrar a Predicción? Puedes cambiar de pestaña ahí igual, esto solo decide con cuál abre.</p>
+      <div class="option-cards cols-2" data-group="vista_prediccion_default">
+        {% set vista_actual = (config.vista_prediccion_default if config and config.vista_prediccion_default else "platos") %}
         {% for valor, label, sub, icon in [
-          ("inventario","Inventario","Cuánto reabastecer","bi-box-seam"),
-          ("produccion","Producción","Cuánto producir por día","bi-egg-fried"),
-          ("ingresos","Ingresos","Estimar ganancias futuras","bi-cash-coin")
+          ("platos","Demanda de Platos","Cuánto vender de cada producto","bi-egg-fried"),
+          ("insumos","Previsión de Insumos","Cuánto insumo hace falta","bi-box-seam")
         ] %}
-          <label class="option-card {% if objetivo_actual == valor %}selected{% endif %}">
-            <input type="radio" name="objetivo_analisis" value="{{ valor }}"
-                   {% if objetivo_actual == valor %}checked{% endif %}>
+          <label class="option-card {% if vista_actual == valor %}selected{% endif %}">
+            <input type="radio" name="vista_prediccion_default" value="{{ valor }}"
+                   {% if vista_actual == valor %}checked{% endif %}>
             <div class="oc-icon"><i class="bi {{ icon }}"></i></div>
             <div>
               <div class="oc-title">{{ label }}</div>
@@ -364,6 +428,41 @@
     </button>
 
   </form>
+</div>
+
+<!-- ── Eventos futuros: promociones/eventos que YA sabes que van a
+     pasar en una fecha específica del horizonte de predicción (ver
+     services/insumos_service.py y blueprints/prediccion.py). Vive
+     acá y no en Predicción porque es una declaración de datos de
+     negocio, igual que el resto de esta pantalla -- no un control de
+     cada corrida individual. ── -->
+<div class="eventos-card">
+  <h4><i class="bi bi-calendar-plus"></i> Promociones y eventos ya planeados</h4>
+  <p class="eventos-desc">¿Sabes que un día específico va a tener promoción o algo fuera de lo común (partido, grupo grande)? Decláralo aquí para que la predicción de ese día lo tenga en cuenta.</p>
+
+  <div class="evento-form">
+    <div class="campo">
+      <label>Fecha</label>
+      <input type="date" id="eventoFecha">
+    </div>
+    <div class="campo campo-check">
+      <input type="checkbox" id="eventoPromocion">
+      <label for="eventoPromocion">Promoción</label>
+    </div>
+    <div class="campo">
+      <label>% descuento (opcional)</label>
+      <input type="number" id="eventoDescuento" min="0" max="100" placeholder="ej. 20">
+    </div>
+    <div class="campo campo-check">
+      <input type="checkbox" id="eventoEspecial">
+      <label for="eventoEspecial">Evento especial</label>
+    </div>
+    <button type="button" class="btn-agregar-evento" id="btnAgregarEvento">Agregar</button>
+  </div>
+
+  <div class="lista-eventos" id="listaEventos">
+    <p style="font-size:.78rem;color:var(--gray-mid)">Sin promociones/eventos declarados todavía.</p>
+  </div>
 </div>
 
 {% endblock %}
@@ -395,5 +494,84 @@
       input.closest(".toggle-row").classList.toggle("on", input.checked);
     });
   });
+
+  // ══════════════════════════════════════════════════════════
+  // EVENTOS FUTUROS (promoción/evento especial declarado)
+  // ══════════════════════════════════════════════════════════
+  function formatFechaEvento(str) {
+    const [y, m, d] = str.split("-");
+    const meses = ["","Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+    return `${parseInt(d)} ${meses[parseInt(m)]}`;
+  }
+
+  async function cargarEventosFuturos() {
+    const wrap = document.getElementById("listaEventos");
+    try {
+      const res  = await fetch("/prediccion/eventos-futuros");
+      const data = await res.json();
+      if (!data.ok) return;
+
+      const fechas = Object.keys(data.eventos).sort();
+      if (!fechas.length) {
+        wrap.innerHTML = `<p style="font-size:.78rem;color:var(--gray-mid)">Sin promociones/eventos declarados todavía.</p>`;
+        return;
+      }
+
+      wrap.innerHTML = fechas.map(fecha => {
+        const ev = data.eventos[fecha];
+        const tags = [];
+        if (ev.promocion) tags.push(`<span class="evento-tag promo">Promoción${ev.descuento_pct ? " " + ev.descuento_pct + "%" : ""}</span>`);
+        if (ev.es_evento_especial) tags.push(`<span class="evento-tag especial">Evento especial</span>`);
+        return `
+          <div class="evento-item">
+            <span class="evento-fecha">${formatFechaEvento(fecha)}</span>
+            <div class="evento-tags">${tags.join("")}</div>
+            <button class="btn-borrar-evento" onclick="borrarEventoFuturo('${fecha}')" title="Quitar">
+              <i class="bi bi-x-lg"></i>
+            </button>
+          </div>`;
+      }).join("");
+    } catch (e) { /* silencioso -- no bloquea el resto de la página */ }
+  }
+
+  document.getElementById("btnAgregarEvento").addEventListener("click", async () => {
+    const fecha = document.getElementById("eventoFecha").value;
+    if (!fecha) { alert("Elige una fecha."); return; }
+
+    const body = {
+      fecha,
+      es_promocion: document.getElementById("eventoPromocion").checked,
+      es_evento_especial: document.getElementById("eventoEspecial").checked,
+      descuento_pct: document.getElementById("eventoDescuento").value || null,
+    };
+
+    try {
+      const res  = await fetch("/prediccion/eventos-futuros", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!data.ok) { alert("Error: " + data.error); return; }
+
+      document.getElementById("eventoFecha").value = "";
+      document.getElementById("eventoPromocion").checked = false;
+      document.getElementById("eventoEspecial").checked = false;
+      document.getElementById("eventoDescuento").value = "";
+      cargarEventosFuturos();
+    } catch (e) {
+      alert("Error de conexión: " + e.message);
+    }
+  });
+
+  async function borrarEventoFuturo(fecha) {
+    try {
+      const res  = await fetch(`/prediccion/eventos-futuros/${fecha}`, { method: "DELETE" });
+      const data = await res.json();
+      if (data.ok) cargarEventosFuturos();
+    } catch (e) { /* silencioso */ }
+  }
+
+  cargarEventosFuturos();
 </script>
 {% endblock %}

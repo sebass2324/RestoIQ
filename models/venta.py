@@ -44,6 +44,17 @@ class Venta(db.Model):
     descuento_pct       = db.Column(db.Float, nullable=True)
     es_evento_especial = db.Column(db.Boolean, nullable=True)
 
+    # ── Clima (opcional) ──
+    # Se llenan solo si el archivo del usuario las trae (o si vienen
+    # del generador sintético con perfil "elchamoburger"). Mismo
+    # patrón que las columnas de negocio de arriba: su ausencia nunca
+    # rompe el pipeline, sales_model.py simplemente no las usa como
+    # feature si no están presentes.
+    lluvia_manana_mm      = db.Column(db.Float, nullable=True)
+    temp_manana_promed    = db.Column(db.Float, nullable=True)
+    lluvia_nocturna_mm    = db.Column(db.Float, nullable=True)
+    temp_nocturna_promed  = db.Column(db.Float, nullable=True)
+
     # ── Features temporales (ya calculadas por DataCleaner, se guardan
     #    tal cual para no recalcularlas en cada predicción) ──
     dia_semana = db.Column(db.Integer, nullable=False)
@@ -52,7 +63,12 @@ class Venta(db.Model):
     es_finde = db.Column(db.Boolean, default=False)
     es_feriado = db.Column(db.Boolean, default=False)
     es_puente = db.Column(db.Boolean, default=False)
-    es_quincena = db.Column(db.Boolean, default=False)
+    # Reemplaza al viejo "es_quincena" (bandera binaria, meseta ancha
+    # de 14 días, con poca señal real) -- ver services/data_cleaner.py
+    # y services/data_generator.py para la lógica exacta.
+    dias_distancia_cobro = db.Column(db.Integer, nullable=True)
+    pico_comida_rapida   = db.Column(db.Boolean, nullable=True)
+    fase_liquidez         = db.Column(db.Integer, nullable=True)
 
     __table_args__ = (
         db.Index("ix_ventas_user_fecha_producto", "user_id", "fecha", "producto"),

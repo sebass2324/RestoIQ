@@ -30,6 +30,11 @@ COLUMNAS_NUEVAS_POR_TABLA = {
         "descuento_pct":       "FLOAT NULL",
         "es_evento_especial": "BOOLEAN NULL",
         "categoria":          "VARCHAR(100) NULL",
+        # Reemplazan a "es_quincena" (bandera binaria, poca señal
+        # real) -- ver services/data_cleaner.py y data_generator.py.
+        "dias_distancia_cobro": "INT NULL",
+        "pico_comida_rapida":   "BOOLEAN NULL",
+        "fase_liquidez":         "INT NULL",
     },
     "modelo_ml": {
         # Filas del historial en el último entrenamiento — para el

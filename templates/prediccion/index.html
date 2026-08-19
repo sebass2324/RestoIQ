@@ -538,6 +538,149 @@
   .nivel-ALTO  { background: #fee2e2; color: #b91c1c; }
   .nivel-MEDIO { background: #fef3c7; color: #92400e; }
   .nivel-BAJO  { background: #dbeafe; color: #1d4ed8; }
+
+  /* ── Pestañas: Demanda de Platos / Previsión de Insumos ── */
+  .tabs-pred {
+    display: flex;
+    gap: .4rem;
+    margin-bottom: 1.25rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .tab-pred-btn {
+    padding: .65rem 1.1rem;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    font-size: .88rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: .4rem;
+    transition: color .15s, border-color .15s;
+  }
+  .tab-pred-btn:hover { color: var(--text-primary); }
+  .tab-pred-btn.active { color: var(--primary); border-bottom-color: var(--primary); }
+  .tab-pred-panel { display: none; }
+  .tab-pred-panel.active { display: block; }
+
+  /* ── Eventos futuros (promoción/evento especial declarado) ── */
+  .eventos-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.1rem 1.4rem;
+    margin-bottom: 1.5rem;
+  }
+  .eventos-card h4 {
+    font-size: .88rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 0 0 .3rem;
+    display: flex;
+    align-items: center;
+    gap: .4rem;
+  }
+  .eventos-card .eventos-desc {
+    font-size: .78rem;
+    color: var(--text-muted);
+    margin-bottom: .9rem;
+  }
+  .evento-form {
+    display: flex;
+    gap: .6rem;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    margin-bottom: 1rem;
+  }
+  .evento-form .campo { display: flex; flex-direction: column; gap: .25rem; }
+  .evento-form label { font-size: .72rem; font-weight: 600; color: var(--text-muted); }
+  .evento-form input[type="date"],
+  .evento-form input[type="number"] {
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: .45rem .6rem; font-size: .82rem; width: 140px;
+  }
+  .evento-form .campo-check { flex-direction: row; align-items: center; gap: .4rem; padding-bottom: .5rem; }
+  .evento-form .campo-check label { font-size: .8rem; color: var(--text-primary); font-weight: 500; }
+  .btn-agregar-evento {
+    background: var(--primary); color: #fff; border: none; border-radius: 8px;
+    padding: .5rem 1rem; font-size: .82rem; font-weight: 600; cursor: pointer;
+  }
+  .btn-agregar-evento:hover { opacity: .9; }
+  .lista-eventos { display: flex; flex-direction: column; gap: .4rem; }
+  .evento-item {
+    display: flex; align-items: center; gap: .6rem;
+    padding: .55rem .8rem;
+    background: var(--bg); border-radius: 8px;
+    font-size: .8rem;
+  }
+  .evento-item .evento-fecha { font-weight: 700; color: var(--text-primary); min-width: 90px; }
+  .evento-item .evento-tags { display: flex; gap: .35rem; flex: 1; flex-wrap: wrap; }
+  .evento-tag {
+    font-size: .7rem; font-weight: 600; padding: .15rem .55rem; border-radius: 99px;
+  }
+  .evento-tag.promo { background: #fef3c7; color: #92400e; }
+  .evento-tag.especial { background: #ede9fe; color: #7c3aed; }
+  .evento-item .btn-borrar-evento {
+    background: none; border: none; color: var(--text-muted); cursor: pointer;
+    padding: .2rem; display: flex; align-items: center;
+  }
+  .evento-item .btn-borrar-evento:hover { color: #dc2626; }
+
+  /* ── Previsión de Insumos ── */
+  .badge-estimado {
+    display: inline-flex; align-items: center; gap: .35rem;
+    font-size: .72rem; font-weight: 600;
+    background: #fef3c7; color: #92400e;
+    padding: .3rem .75rem; border-radius: 99px;
+    margin-bottom: 1.1rem;
+  }
+  .insumos-resumen {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: .75rem;
+    margin-bottom: 1.25rem;
+  }
+  .insumos-resumen-item {
+    background: var(--bg);
+    border-radius: 10px;
+    padding: .8rem 1rem;
+  }
+  .insumos-resumen-valor {
+    font-family: var(--mono); font-size: 1.35rem; font-weight: 700; color: var(--text-primary);
+  }
+  .insumos-resumen-label { font-size: .72rem; color: var(--text-muted); margin-top: .1rem; }
+
+  .lista-insumos { display: flex; flex-direction: column; gap: .5rem; }
+  .insumo-fila {
+    display: flex; align-items: center; gap: .9rem;
+    padding: .7rem .9rem;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    transition: border-color .15s, background .15s;
+  }
+  .insumo-fila:hover { border-color: rgba(83,74,183,.3); background: var(--bg); }
+  .insumo-rank {
+    width: 24px; height: 24px; border-radius: 50%; flex-shrink: 0;
+    background: var(--bg); color: var(--text-muted);
+    font-size: .68rem; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .insumo-info { flex: 1; min-width: 0; }
+  .insumo-nombre { font-size: .88rem; font-weight: 600; color: var(--text-primary); }
+  .insumo-usado-en {
+    font-size: .72rem; color: var(--text-muted);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    max-width: 420px;
+  }
+  .insumo-bar-track { height: 5px; border-radius: 3px; background: var(--bg); margin-top: .35rem; overflow: hidden; }
+  .insumo-bar-fill { height: 100%; border-radius: 3px; background: var(--primary); opacity: .75; }
+  .insumo-cantidad {
+    font-family: var(--mono); font-size: .95rem; font-weight: 700;
+    color: var(--text-primary); white-space: nowrap; text-align: right; min-width: 90px;
+  }
+  .insumo-unidad { font-size: .68rem; color: var(--text-muted); font-weight: 500; }
 </style>
 {% endblock %}
 
@@ -571,6 +714,19 @@
     <i data-lucide="rotate-cw" style="width:15px;height:15px"></i> Actualizar predicción
   </button>
 </div>
+
+<!-- ── Pestañas: Demanda de Platos / Previsión de Insumos ── -->
+{% set vista_default = (config.vista_prediccion_default if config and config.vista_prediccion_default else "platos") %}
+<div class="tabs-pred">
+  <button class="tab-pred-btn {% if vista_default == 'platos' %}active{% endif %}" data-tab="platos" onclick="cambiarTabPrediccion('platos')">
+    <i data-lucide="utensils" style="width:14px;height:14px"></i> Demanda de Platos
+  </button>
+  <button class="tab-pred-btn {% if vista_default == 'insumos' %}active{% endif %}" data-tab="insumos" onclick="cambiarTabPrediccion('insumos')">
+    <i data-lucide="package" style="width:14px;height:14px"></i> Previsión de Insumos
+  </button>
+</div>
+
+<div class="tab-pred-panel {% if vista_default == 'platos' %}active{% endif %}" id="tabPanelPlatos">
 
 <!-- ── Tarjetas principales: accionables, no números sueltos ── -->
 <div class="pred-grid" id="statsGrid">
@@ -778,6 +934,25 @@
     </div>
   </div>
 </div>
+
+</div> <!-- cierra tabPanelPlatos -->
+
+<div class="tab-pred-panel {% if vista_default == 'insumos' %}active{% endif %}" id="tabPanelInsumos">
+  <div class="section-card">
+    <h3><i data-lucide="package" style="width:16px;height:16px;color:var(--primary)"></i> Insumos necesarios para el horizonte predicho</h3>
+    <span class="badge-estimado">
+      <i data-lucide="alert-triangle" style="width:12px;height:12px"></i>
+      Estimación — cantidades de receta calibrables, no medición real
+    </span>
+    <div id="insumosWrap">
+      <div class="empty-state">
+        <i data-lucide="package"></i>
+        <p>Selecciona la pestaña para calcular la previsión de insumos.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
 {% endblock %}
 
 {% block scripts %}
@@ -1331,6 +1506,108 @@ function formatFecha(str) {
   const [y, m, d] = str.split("-");
   const meses = ["","Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
   return `${parseInt(d)} ${meses[parseInt(m)]}`;
+}
+
+// ══════════════════════════════════════════════════════════
+// PESTAÑAS: Demanda de Platos / Previsión de Insumos
+// ══════════════════════════════════════════════════════════
+function cambiarTabPrediccion(tab) {
+  document.querySelectorAll(".tab-pred-btn").forEach(b => b.classList.toggle("active", b.dataset.tab === tab));
+  document.getElementById("tabPanelPlatos").classList.toggle("active", tab === "platos");
+  document.getElementById("tabPanelInsumos").classList.toggle("active", tab === "insumos");
+  if (tab === "insumos" && !insumosYaCargados) cargarInsumos();
+}
+
+// Si la vista por defecto (configurada en /configuracion) es
+// "insumos", calcula la previsión de una vez al entrar -- sin esto,
+// el usuario vería la pestaña activa pero vacía hasta hacer clic.
+{% if vista_default == "insumos" %}
+document.addEventListener("DOMContentLoaded", cargarInsumos);
+if (document.readyState !== "loading") cargarInsumos();
+{% endif %}
+
+// ══════════════════════════════════════════════════════════
+// PREVISIÓN DE INSUMOS
+// ══════════════════════════════════════════════════════════
+let insumosYaCargados = false;
+
+async function cargarInsumos() {
+  const wrap = document.getElementById("insumosWrap");
+  wrap.innerHTML = `<div class="empty-state"><div class="spinner"></div><p>Calculando insumos necesarios...</p></div>`;
+
+  try {
+    const res  = await fetch("/prediccion/insumos", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ dias: diasSeleccionados }),
+    });
+    const data = await res.json();
+
+    if (!data.ok) {
+      wrap.innerHTML = `<div class="empty-state"><i data-lucide="package-x"></i><p>${data.error}</p></div>`;
+      lucide.createIcons();
+      return;
+    }
+    insumosYaCargados = true;
+
+    if (!data.por_ingrediente.length) {
+      wrap.innerHTML = `<div class="empty-state"><i data-lucide="package-x"></i><p>No hay recetas cargadas todavía para tus productos.</p></div>`;
+      lucide.createIcons();
+      return;
+    }
+
+    let avisoSinReceta = "";
+    if (data.productos_sin_receta && data.productos_sin_receta.length) {
+      avisoSinReceta = `<p style="font-size:.75rem;color:var(--text-muted);margin-bottom:1rem;">
+        <i data-lucide="info" style="width:12px;height:12px;vertical-align:middle"></i>
+        Sin receta cargada (no incluidos en el cálculo): ${data.productos_sin_receta.join(", ")}
+      </p>`;
+    }
+
+    const ingredientes = data.por_ingrediente;
+    const maxCantidad = Math.max(...ingredientes.map(i => i.cantidad_necesaria));
+    const totalIngredientes = ingredientes.length;
+    const enGramos = ingredientes.filter(i => i.unidad === "g").length;
+    const enUnidades = ingredientes.filter(i => i.unidad === "unidad").length;
+
+    wrap.innerHTML = `
+      <div class="insumos-resumen">
+        <div class="insumos-resumen-item">
+          <div class="insumos-resumen-valor">${totalIngredientes}</div>
+          <div class="insumos-resumen-label">Ingredientes distintos</div>
+        </div>
+        <div class="insumos-resumen-item">
+          <div class="insumos-resumen-valor">${enGramos}</div>
+          <div class="insumos-resumen-label">Medidos por peso (g)</div>
+        </div>
+        <div class="insumos-resumen-item">
+          <div class="insumos-resumen-valor">${enUnidades}</div>
+          <div class="insumos-resumen-label">Medidos por unidad</div>
+        </div>
+      </div>
+      ${avisoSinReceta}
+      <div class="lista-insumos">
+        ${ingredientes.map((i, idx) => {
+          const pct = Math.max((i.cantidad_necesaria / maxCantidad) * 100, 3);
+          const cantidadFmt = i.unidad === "g" && i.cantidad_necesaria >= 1000
+            ? (i.cantidad_necesaria / 1000).toLocaleString("es-EC", {maximumFractionDigits: 2}) + " kg"
+            : i.cantidad_necesaria.toLocaleString("es-EC") + " " + i.unidad;
+          return `
+            <div class="insumo-fila">
+              <span class="insumo-rank">${idx + 1}</span>
+              <div class="insumo-info">
+                <div class="insumo-nombre">${i.ingrediente}</div>
+                <div class="insumo-usado-en" title="${i.productos.join(", ")}">Se usa en: ${i.productos.join(", ")}</div>
+                <div class="insumo-bar-track"><div class="insumo-bar-fill" style="width:${pct}%"></div></div>
+              </div>
+              <div class="insumo-cantidad">${cantidadFmt}</div>
+            </div>`;
+        }).join("")}
+      </div>`;
+  } catch (e) {
+    wrap.innerHTML = `<div class="empty-state"><i data-lucide="package-x"></i><p>Error de conexión: ${e.message}</p></div>`;
+  }
+  lucide.createIcons();
 }
 </script>
 {% endblock %}

@@ -122,6 +122,24 @@
       Descargar archivo de ejemplo (.csv)
     </a>
 
+    <div class="help-section help-danger-zone">
+      <p class="help-title">
+        <i data-lucide="alert-triangle"></i>
+        Zona de peligro
+      </p>
+      <p class="help-desc">
+        Borra TODO tu historial de ventas y los modelos ya entrenados —
+        útil para empezar de cero con un archivo nuevo, en vez de que
+        se fusione con datos anteriores. Esta acción no se puede deshacer.
+      </p>
+      <form method="POST" action="{{ url_for('upload.borrar_historial') }}" id="formBorrarHistorial">
+        <button type="submit" class="btn-danger" id="btnBorrarHistorial">
+          <i data-lucide="trash-2"></i>
+          Borrar todo mi historial
+        </button>
+      </form>
+    </div>
+
   </div>
 
 </div>
@@ -204,6 +222,17 @@
     if (bytes < 1024) return bytes + " B";
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
     return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+  }
+
+  // Confirmación antes de borrar — acción destructiva, sin vuelta atrás
+  const formBorrar = document.getElementById("formBorrarHistorial");
+  if (formBorrar) {
+    formBorrar.addEventListener("submit", (e) => {
+      const confirmado = confirm(
+        "¿Seguro que querés borrar TODO tu historial de ventas y los modelos entrenados?\n\nEsta acción no se puede deshacer."
+      );
+      if (!confirmado) e.preventDefault();
+    });
   }
 </script>
 {% endblock %}

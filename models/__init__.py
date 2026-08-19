@@ -10,3 +10,5 @@ from models.venta import Venta              # noqa: E402,F401
 from models.dataset_usuario import DatasetUsuario  # noqa: E402,F401
 from models.modelo_ml import ModeloML       # noqa: E402,F401
 from models.configuracion_analisis import ConfiguracionAnalisis  # noqa: E402,F401
+from models.evento_futuro import EventoFuturo, EventoEspecialFuturo  # noqa: E402,F401
+from models.receta_insumo import RecetaInsumo          # noqa: E402,F401

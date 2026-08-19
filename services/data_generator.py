@@ -251,6 +251,24 @@ PERFILES = {
             ("Jumbo Especial", 2.00, 6, None),
             ("Jumbo Mega", 2.50, 2, None),
             ("Choriperro", 2.00, 2, None),
+            # Bebidas — precios REALES del menú (MENU.pdf). Demanda base
+            # calibrada como complemento de la comida (sin combos, según
+            # la entrevista, pregunta 8): suman ~32% del volumen total de
+            # comida, y ninguna bebida individual supera al producto más
+            # vendido del local (La Sencilla, demanda_base=10) -- antes
+            # el agua empataba con la hamburguesa top, lo cual no tenía
+            # sentido de negocio para un local que no es una tienda de
+            # bebidas.
+            ("Agua 300ml",             0.50, 6, None),
+            ("Jugo Natural Maracuyá",  0.75, 3, None),
+            ("Jugo Natural Mora",      0.75, 3, None),
+            ("Nutrimalta 350ml",       0.50, 4, None),
+            ("Nutrimalta 550ml",       1.00, 2, None),
+            ("Cola Coca-Cola",         0.50, 8, None),
+            ("Cola Sprite",            0.50, 4, None),
+            ("Cola Fanta",             0.50, 4, None),
+            ("Cola Inca",              0.50, 3, None),
+            ("Cola Tropical",          0.50, 2, None),
         ],
         # Ranking real del dueño: sábado > viernes > domingo > martes >
         # miércoles > jueves > lunes. "El doble" entre mejor y peor día
@@ -260,6 +278,15 @@ PERFILES = {
         # fiestas de Durán (octubre), diciembre. El resto del año, parejo.
         "factor_mes": {1:0.90, 2:0.90, 3:0.92, 4:0.95, 5:1.20, 6:0.95,
                        7:0.95, 8:0.95, 9:0.95, 10:1.20, 11:0.95, 12:1.30},
+        # Calibración de volumen: la suma de demanda_base de todos los
+        # productos, ya ponderada por factor_dia/factor_mes, generaba
+        # ~182 u/día en promedio. La entrevista dice explícitamente
+        # "entre 300 y 350 unidades aproximadamente" en un día normal
+        # (pregunta de Volumen aproximado). 1.8x lleva el promedio a
+        # ~327 u/día, dentro del rango declarado por el dueño, sin
+        # tener que re-escribir a mano los 63 demanda_base individuales
+        # (las proporciones relativas entre productos se conservan).
+        "escala_volumen": 1.8,
     },
 }
 
@@ -347,6 +374,11 @@ CATEGORIAS = {
         "Cachapa Chuleta Ahumada": "Cachapas",
         "Jumbo Sencillo": "Hotdogs", "Jumbo Especial": "Hotdogs",
         "Jumbo Mega": "Hotdogs", "Choriperro": "Hotdogs",
+        "Agua 300ml": "Bebidas", "Jugo Natural Maracuyá": "Bebidas",
+        "Jugo Natural Mora": "Bebidas", "Nutrimalta 350ml": "Bebidas",
+        "Nutrimalta 550ml": "Bebidas", "Cola Coca-Cola": "Bebidas",
+        "Cola Sprite": "Bebidas", "Cola Fanta": "Bebidas",
+        "Cola Inca": "Bebidas", "Cola Tropical": "Bebidas",
     },
 }
 
@@ -354,21 +386,6 @@ CATEGORIAS = {
 # ════════════════════════════════════════════════════════════
 # CLÁSICO DEL ASTILLERO (Barcelona SC vs. Emelec) — solo El Chamo Burger
 # ════════════════════════════════════════════════════════════
-# Según el dueño: partido de TARDE (4-6pm) → más ventas.
-# Partido de NOCHE → menos ventas (la gente se queda viendo en casa,
-# compite con las horas fuertes del local, 4pm-11pm).
-#
-# IMPORTANTE — esto NO es una feature del modelo predictivo (ver
-# sales_model.py): ocurre solo 2-3 veces al año, muy poca evidencia
-# para que un modelo la aprenda de forma confiable (riesgo real de
-# sobreajuste con una variable casi siempre en 0). Se usa ÚNICAMENTE
-# acá, para que el DATASET HISTÓRICO sea más realista esos días
-# puntuales — el modelo nunca ve esta variable.
-#
-# Lista PARCIAL a propósito: son las únicas fechas y horas que pude
-# verificar con fuente real (notas de prensa). Partidos de 2022-2023
-# no siempre publican la hora exacta de forma consultable — se
-# dejaron afuera en vez de inventar un horario.
 CLASICOS_ASTILLERO = {
     "2024-10-20": "tarde",   # 17:00, Barcelona vs. Emelec (primicias.ec)
     "2025-09-14": "tarde",   # 17:30, Emelec vs. Barcelona (primicias.ec)
@@ -378,81 +395,76 @@ CLASICOS_ASTILLERO = {
 F_CLASICO_TARDE = 1.30
 F_CLASICO_NOCHE = 0.80
 
+DISPERSION_NB_BASE = 25
+
 
 # ════════════════════════════════════════════════════════════
 # HELPERS DE FEATURES TEMPORALES
 # ════════════════════════════════════════════════════════════
 
 def _features_temporales(fecha_dt: pd.Timestamp) -> dict:
-    """
-    Dado un Timestamp, devuelve todas las features derivadas de la fecha.
-    Estas son las mismas features que se calcularán en producción cuando
-    el usuario suba su CSV real, así el modelo puede generalizar.
-    """
     fecha_str = fecha_dt.strftime("%Y-%m-%d")
-    dia_semana = fecha_dt.weekday()          # 0=Lun … 6=Dom
+    dia_semana = fecha_dt.weekday()
     es_finde   = int(dia_semana in [5, 6])
     es_feriado = int(fecha_str in FERIADOS_ECUADOR)
-
-    # Feriado o puente (día antes/después de feriado)
     ayer    = (fecha_dt - timedelta(days=1)).strftime("%Y-%m-%d")
     maniana = (fecha_dt + timedelta(days=1)).strftime("%Y-%m-%d")
     es_puente = int(ayer in FERIADOS_ECUADOR or maniana in FERIADOS_ECUADOR)
-
-    # Quincena: semana de cobro (1-7 y 15-21 de cada mes)
     dia_mes = fecha_dt.day
-    es_quincena = int(1 <= dia_mes <= 7 or 15 <= dia_mes <= 21)
+    dias_en_mes = fecha_dt.days_in_month
+
+    # Distancia al día de cobro más cercano (15 o fin/inicio de mes) --
+    # variable CONTINUA, no binaria. Le da a LightGBM puntos de corte
+    # reales para encontrar dónde empieza a importar la cercanía al
+    # pago, en vez de forzar una ventana fija de antemano. Maneja
+    # meses de 28 a 31 días correctamente.
+    dist_15 = abs(dia_mes - 15)
+    dist_fin = min(dia_mes - 1, dias_en_mes - dia_mes)
+    dias_distancia_cobro = min(dist_15, dist_fin)
+
+    # Pico: cobro que coincide con fin de semana (viernes/sábado) --
+    # incluye el caso de pago adelantado cuando el 15/30 cae en fin de
+    # semana (13/14/28/29 + viernes).
+    es_ventana_pago = (
+        dia_mes in (15, 16, dias_en_mes, 1)
+        or (dia_mes in (13, 14, dias_en_mes - 2, dias_en_mes - 1) and dia_semana == 4)
+    )
+    es_finde_alto = dia_semana in (4, 5)
+    pico_comida_rapida = int(es_ventana_pago and es_finde_alto)
+
+    # Fase de liquidez: 3=cobro activo, 2=post-pago inmediato,
+    # 1=neutral, 0=escasez real (días antes del pago, sin adelanto).
+    if pico_comida_rapida == 1 or dia_mes in (15, dias_en_mes, 1):
+        fase_liquidez = 3
+    elif dia_mes in (2, 16, 17):
+        fase_liquidez = 2
+    elif dia_mes in (13, 14, dias_en_mes - 2, dias_en_mes - 1) and pico_comida_rapida == 0:
+        fase_liquidez = 0
+    else:
+        fase_liquidez = 1
 
     return {
-        "dia_semana":   dia_semana,          # 0-6
-        "mes":          fecha_dt.month,       # 1-12
-        "semana_anio":  fecha_dt.isocalendar().week,  # 1-53
-        "es_finde":     es_finde,             # 0/1
-        "es_feriado":   es_feriado,           # 0/1
-        "es_puente":    es_puente,            # 0/1
-        "es_quincena":  es_quincena,          # 0/1  ← patrón de cobro Ecuador
+        "dia_semana":   dia_semana,
+        "mes":          fecha_dt.month,
+        "semana_anio":  fecha_dt.isocalendar().week,
+        "es_finde":     es_finde,
+        "es_feriado":   es_feriado,
+        "es_puente":    es_puente,
+        "dias_distancia_cobro": dias_distancia_cobro,
+        "pico_comida_rapida":   pico_comida_rapida,
+        "fase_liquidez":        fase_liquidez,
     }
 
 
-# ════════════════════════════════════════════════════════════
-# PROMOCIONES Y DESCUENTOS (sintéticos, independientes entre sí)
-# ════════════════════════════════════════════════════════════
-
-# Probabilidad de que una fila (fecha, producto) tenga promoción activa,
-# y el rango de aumento de demanda que produce cuando ocurre.
 PROMO_PROBABILIDAD = 0.12
 PROMO_BOOST_RANGO  = (1.25, 1.70)
 
-# Probabilidad de que una fila tenga descuento (independiente de la
-# promoción — puede haber descuento sin promoción y viceversa, según
-# se decidió explícitamente para este generador). Los valores posibles
-# de descuento y cuánto empuja la demanda por cada punto porcentual.
 DESCUENTO_PROBABILIDAD    = 0.15
-DESCUENTO_PCT_OPCIONES    = [10, 15, 20, 25, 30]   # entero tipo porcentaje (15 = 15%)
-DESCUENTO_BOOST_POR_PUNTO = 0.008                   # 20% de descuento → +16% de demanda
+DESCUENTO_PCT_OPCIONES    = [10, 15, 20, 25, 30]
+DESCUENTO_BOOST_POR_PUNTO = 0.008
 
-
-# ════════════════════════════════════════════════════════════
-# CLASE GENERADORA
-# ════════════════════════════════════════════════════════════
 
 class DataGenerator:
-    """
-    Genera datasets sintéticos de ventas DIARIAS por producto para RestoIQ.
-
-    Columnas de salida (CSV limpio):
-        fecha, producto, cantidad, precio_unitario, total,
-        dia_semana, mes, semana_anio,
-        es_finde, es_feriado, es_puente, es_quincena
-        [+ promocion]        si incluir_promociones=True
-        [+ descuento_pct]    si incluir_descuentos=True
-
-    El CSV sucio mantiene las mismas columnas pero introduce errores en
-    fecha, producto, cantidad y precio_unitario para probar el DataCleaner.
-    Las columnas de negocio opcionales (promocion, descuento_pct) NO se
-    ensucian, igual que el resto de features de contexto.
-    """
-
     def __init__(self, tipo_negocio="restaurante", años=2, meses=None,
                  incluir_promociones=False, incluir_descuentos=False):
         if tipo_negocio not in PERFILES:
@@ -462,33 +474,12 @@ class DataGenerator:
             )
         self.perfil = PERFILES[tipo_negocio]
         self.tipo   = tipo_negocio
-
-        # `meses`, si viene, manda sobre `años` — pero `años` se
-        # mantiene como parámetro válido para no romper a quien ya
-        # llama DataGenerator(tipo_negocio=..., años=...) (ej.
-        # generar_todos() y el bloque de prueba de sales_model.py).
         self.meses = meses if meses is not None else round(años * 12)
-        self.años  = self.meses / 12  # usado en el cálculo de tendencia
-
+        self.años  = self.meses / 12
         self.incluir_promociones = incluir_promociones
-        # Descuentos requiere que promociones esté activo a nivel de
-        # menú (opción 3 = "promociones y descuentos"), pero a nivel de
-        # fila son independientes entre sí (puede haber descuento sin
-        # promoción activa en esa fila específica, y viceversa).
         self.incluir_descuentos  = incluir_descuentos
 
-    # ── Generación principal ──────────────────────────────────────────────
-
     def generar(self, sucio=False) -> pd.DataFrame:
-        """
-        Genera el dataset completo.
-
-        Parámetros:
-            sucio: si True agrega errores realistas para probar el DataCleaner.
-
-        Retorna:
-            DataFrame con features de contexto ya incluidas.
-        """
         fecha_inicio = datetime.today() - timedelta(days=round(self.meses * 30.44))
         fecha_fin    = datetime.today() - timedelta(days=1)
         fechas       = pd.date_range(fecha_inicio, fecha_fin, freq="D")
@@ -497,11 +488,6 @@ class DataGenerator:
         factor_dia = self.perfil["factor_dia"]
         factor_mes = self.perfil["factor_mes"]
 
-        # Clima real de Durán — UNA sola llamada para todo el rango,
-        # no una por día. Solo para El Chamo Burger (el resto de los
-        # perfiles no tiene coordenadas reales asociadas). Si la API
-        # no responde (sin internet), se sigue generando el dataset
-        # igual, sin efecto de clima — nunca rompe la generación.
         clima_por_fecha = {}
         if self.tipo == "elchamoburger":
             try:
@@ -510,53 +496,117 @@ class DataGenerator:
                     fecha_inicio.strftime("%Y-%m-%d"), fecha_fin.strftime("%Y-%m-%d")
                 )
                 if df_clima is not None:
+                    # Forzar a datetime real, sin importar si el servicio
+                    # devuelve la columna "fecha" como texto o ya como
+                    # Timestamp -- antes, si venía como texto, row["fecha"]
+                    # no tenía .strftime() y el except de abajo lo tragaba
+                    # en silencio, dejando clima_por_fecha vacío sin avisar.
+                    df_clima = df_clima.copy()
+                    df_clima["fecha"] = pd.to_datetime(df_clima["fecha"])
                     clima_por_fecha = {
                         row["fecha"].strftime("%Y-%m-%d"): row.to_dict()
                         for _, row in df_clima.iterrows()
                     }
-            except Exception:
-                pass
+            except Exception as e:
+                # Antes: "except Exception: pass" -- tragaba CUALQUIER
+                # error sin avisar (fue lo que ocultó este bug). Ahora se
+                # imprime para poder diagnosticar, pero NUNCA rompe la
+                # generación del dataset (clima_por_fecha simplemente
+                # queda vacío y el resto sigue funcionando sin clima).
+                print(f"[data_generator] No se pudo obtener clima: {e}")
+
+        choque_anterior = {nombre: 0.0 for nombre, _, _, _ in self.perfil["productos"]}
+        PESO_MOMENTUM  = 0.15
+        DECAIMIENTO    = 0.35
+
+        demanda_base_promedio = np.mean([d for _, _, d, _ in self.perfil["productos"]])
+        dispersion_por_producto = {
+            # La dispersión se calcula sobre la PROPORCIÓN entre
+            # productos (demanda_base / promedio), que no cambia al
+            # escalar el volumen total -- por eso no se multiplica acá
+            # por escala_volumen, solo abajo en demanda_esperada.
+            nombre: max(2.0, DISPERSION_NB_BASE * (demanda_base / demanda_base_promedio) ** 0.5)
+            for nombre, _, demanda_base, _ in self.perfil["productos"]
+        }
+        escala_volumen = self.perfil.get("escala_volumen", 1.0)
 
         filas = []
         for i, fecha in enumerate(fechas):
-            tendencia       = 1 + (i / len(fechas)) * (0.20 * self.años)
+            # Tendencia de crecimiento orgánico ~0.5% mensual, compuesta
+            # (no lineal) -- sobre 3 años equivale a ~19.7% acumulado,
+            # bastante más modesto que un 20%/año lineal, y más realista
+            # para un negocio pequeño ya establecido (4 años operando,
+            # según la entrevista, no en fase de expansión acelerada).
+            meses_transcurridos = i / 30.44
+            tendencia = 1.005 ** meses_transcurridos
             f_dia           = factor_dia[fecha.weekday()]
             f_mes           = factor_mes[fecha.month]
             evento_especial = random.uniform(1.3, 2.0) if random.random() < 0.05 else 1.0
 
-            # Features temporales de contexto (las mismas que en producción)
             feats = _features_temporales(fecha)
-
             clima_dia = clima_por_fecha.get(fecha.strftime("%Y-%m-%d"), {})
 
-            # Factor de clima — solo la lluvia NOCTURNA importa (4pm-11pm
-            # es el horario real del local, la lluvia de la mañana no
-            # afecta nada porque todavía está cerrado). Penalización
-            # leve, como confirmó el dueño en la entrevista — no un
-            # colapso de ventas, solo menos gente saliendo a caminar.
             f_clima = 1.0
             if self.tipo == "elchamoburger" and clima_dia:
+                # Solo clima NOCTURNO (horario real de operación,
+                # 4pm-11pm), calibrado con el propietario. Antes también
+                # se incluía lluvia/temperatura de MAÑANA, pero una
+                # prueba de ablación sobre el modelo real (comparar WAPE
+                # con y sin esas 2 variables) mostró una diferencia de
+                # solo 0.04 puntos -- no aportaban señal causal propia,
+                # su alta importancia aparente era colinealidad con la
+                # noche (correlación 0.38). Se simplifica para no
+                # simular un efecto ya comprobado irrelevante.
+                # Calibrado según la entrevista: "en lluvia suele
+                # afectar negativamente pero no tanto, pero sí afecta"
+                # -- un efecto real y medible, pero moderado, no un
+                # colapso de la demanda. Los valores anteriores (hasta
+                # -42.5% en lluvia fuerte) generaban una caída de ~52%
+                # en los días más lluviosos del histórico real de
+                # Durán, muy por encima de "no tanto".
                 lluvia_noche = clima_dia.get("lluvia_nocturna_mm") or 0
-                if lluvia_noche > 5:
-                    f_clima = 0.75   # lluvia fuerte durante el horario de operación
-                elif lluvia_noche > 0:
-                    f_clima = 0.90   # lluvia leve
+                if lluvia_noche > 25:
+                    f_clima *= 0.80   # lluvia extrema: ~-20%
+                elif lluvia_noche > 20:
+                    f_clima *= 0.85   # lluvia fuerte: ~-15%
+                elif lluvia_noche > 15:
+                    f_clima *= 0.90   # lluvia moderada: ~-10%
+                elif lluvia_noche > 5:
+                    f_clima *= 0.95   # lluvia ligera continua: ~-5%
+                elif lluvia_noche > 2:
+                    f_clima *= 0.995  # llovizna leve: ~-0.5%
 
-            # Factor extra por feriado: más ventas en heladería/restaurante,
-            # menos en cafetería. El Chamo Burger queda neutro (1.0): el
-            # dueño confirmó que un feriado vende "más o menos igual" a un
-            # fin de semana normal, no un extra encima de eso.
+
+                temp_noche = clima_dia.get("temp_nocturna_promed")
+                if temp_noche is not None:
+    # Calor sofocante nocturno: reduce el apetito presencial en locales sin AC
+                    if temp_noche >= 28.0:
+                         f_clima *= 0.93  
+        
+    # Noche fresca ideal en la costa: incentiva el consumo y la salida de clientes
+                    elif 22.0 <= temp_noche <= 24.5:
+                        f_clima *= 1.04  # Bono del +4% por clima agradable
+        
+    # "Frío" extremo para la costa (Madrugadas excepcionales o frentes fríos)
+                    elif temp_noche < 21.0:
+                        f_clima *= 0.97  # Ligero castigo del 3% porque la gente prefiere quedarse dentro
+
+
+
             f_feriado = 1.0
             if self.tipo == "elchamoburger":
                 f_feriado = 1.0
             elif feats["es_feriado"] or feats["es_finde"]:
                 f_feriado = 1.25 if self.tipo in ("restaurante", "pizzeria", "heladeria") else 0.80
 
-            # Factor de quincena: leve aumento de demanda
-            f_quincena = 1.10 if feats["es_quincena"] else 1.0
+            # Confirmado con el propietario: 25-30%, motor real de gasto.
+            # Ahora impulsado por fase_liquidez (3=cobro activo/pico,
+            # 2=post-pago inmediato, 0=escasez), no por una bandera
+            # binaria -- mismo efecto de negocio, mejor estructurado
+            # para que el árbol encuentre el patrón.
+            mapa_f_quincena = {3: 1.28, 2: 1.15, 1: 1.0, 0: 0.90}
+            f_quincena = mapa_f_quincena[feats["fase_liquidez"]]
 
-            # Clásico del Astillero — solo El Chamo Burger, solo fechas
-            # verificadas (ver CLASICOS_ASTILLERO más arriba)
             f_clasico = 1.0
             if self.tipo == "elchamoburger":
                 tipo_partido = CLASICOS_ASTILLERO.get(fecha.strftime("%Y-%m-%d"))
@@ -566,6 +616,7 @@ class DataGenerator:
                     f_clasico = F_CLASICO_NOCHE
 
             for nombre, precio, demanda_base, temporada in productos:
+                demanda_base = demanda_base * escala_volumen
 
                 f_temp = 1.0
                 if temporada == "finde"  and fecha.weekday() in [4, 5, 6]:
@@ -575,7 +626,6 @@ class DataGenerator:
                 elif temporada == "verano" and fecha.month in [6, 7, 8]:
                     f_temp = 1.6
 
-                # ── Promoción y descuento (independientes entre sí) ──
                 promocion_val = 0
                 f_promo = 1.0
                 if self.incluir_promociones and random.random() < PROMO_PROBABILIDAD:
@@ -588,15 +638,24 @@ class DataGenerator:
                     descuento_val = random.choice(DESCUENTO_PCT_OPCIONES)
                     f_descuento = 1 + descuento_val * DESCUENTO_BOOST_POR_PUNTO
 
+                impulso = 1 + choque_anterior[nombre] * PESO_MOMENTUM
+
                 demanda_esperada = (
                     demanda_base
                     * f_dia * f_mes * f_temp
                     * f_feriado * f_quincena * f_clasico * f_clima
                     * tendencia * evento_especial
                     * f_promo * f_descuento
+                    * impulso
                 )
-                ruido    = np.random.normal(0, demanda_esperada * 0.15)
-                cantidad = max(0, round(demanda_esperada + ruido))
+
+                dispersion = dispersion_por_producto[nombre]
+                mu = max(demanda_esperada, 0.01)
+                p  = dispersion / (dispersion + mu)
+                cantidad = int(np.random.negative_binomial(dispersion, p))
+
+                choque_hoy = (cantidad - demanda_esperada) / mu
+                choque_anterior[nombre] = choque_hoy * DECAIMIENTO
 
                 if cantidad == 0:
                     continue
@@ -608,27 +667,24 @@ class DataGenerator:
                     "cantidad":        int(cantidad),
                     "precio_unitario": precio,
                     "total":           round(cantidad * precio, 2),
-                    # ── Features de contexto ──────────────────────────────
                     "dia_semana":      feats["dia_semana"],
                     "mes":             feats["mes"],
                     "semana_anio":     feats["semana_anio"],
                     "es_finde":        feats["es_finde"],
                     "es_feriado":      feats["es_feriado"],
                     "es_puente":       feats["es_puente"],
-                    "es_quincena":     feats["es_quincena"],
+                    "dias_distancia_cobro": feats["dias_distancia_cobro"],
+                    "pico_comida_rapida":   feats["pico_comida_rapida"],
+                    "fase_liquidez":        feats["fase_liquidez"],
                 }
                 if self.incluir_promociones:
                     fila["promocion"] = promocion_val
                 if self.incluir_descuentos:
                     fila["descuento_pct"] = descuento_val
+                fila["es_evento_especial"] = int(evento_especial > 1.0)
 
-                # Clima real — las mismas 4 variables que causaron el
-                # ajuste en demanda_esperada arriba (f_clima), para que
-                # el modelo pueda aprender la relación real, no una
-                # columna sin conexión con la cantidad generada.
                 if clima_dia:
-                    for col in ("lluvia_manana_mm", "temp_manana_promed",
-                               "lluvia_nocturna_mm", "temp_nocturna_promed"):
+                    for col in ("lluvia_nocturna_mm", "temp_nocturna_promed"):
                         fila[col] = clima_dia.get(col)
 
                 filas.append(fila)
@@ -640,17 +696,8 @@ class DataGenerator:
 
         return df
 
-    # ── Errores sintéticos ────────────────────────────────────────────────
-
     def _agregar_errores(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Introduce errores realistas en las columnas crudas (fecha, producto,
-        cantidad, precio_unitario).  Las columnas de features NO se tocan:
-        el DataCleaner las regenerará a partir de la fecha corregida.
-        """
         df = df.copy()
-
-        # Nombres mal escritos ~3%
         idx_nombres = df.sample(frac=0.03).index
         for idx in idx_nombres:
             prod = df.loc[idx, "producto"]
@@ -662,21 +709,17 @@ class DataGenerator:
             ]
             df.loc[idx, "producto"] = random.choice(errores)
 
-        # Fechas en distintos formatos ~5%
         formatos = ["%d/%m/%Y", "%m-%d-%Y", "%d.%m.%Y", "%d %b %Y"]
         idx_fechas = df.sample(frac=0.05).index
         for idx in idx_fechas:
             fecha_dt = pd.to_datetime(df.loc[idx, "fecha"])
             df.loc[idx, "fecha"] = fecha_dt.strftime(random.choice(formatos))
 
-        # Valores nulos ~2%
         for col in ["cantidad", "precio_unitario"]:
             df.loc[df.sample(frac=0.02).index, col] = np.nan
 
-        # Duplicados ~1%
         df = pd.concat([df, df.sample(frac=0.01)], ignore_index=True)
 
-        # Precios con símbolo $ ~10%  ← FIX: convertir a object antes de asignar strings
         idx_precio = df.sample(frac=0.10).index
         df["precio_unitario"] = df["precio_unitario"].astype(object)
         df.loc[idx_precio, "precio_unitario"] = (
@@ -684,7 +727,6 @@ class DataGenerator:
             .apply(lambda x: f"${x}" if pd.notna(x) else x)
         )
 
-        # Cantidades negativas ~0.5%
         idx_neg = df.sample(frac=0.005).index
         df.loc[idx_neg, "cantidad"] = (
             df.loc[idx_neg, "cantidad"]
@@ -692,8 +734,6 @@ class DataGenerator:
         )
 
         return df.sample(frac=1).reset_index(drop=True)
-
-    # ── I/O ──────────────────────────────────────────────────────────────
 
     def guardar_csv(self, ruta: str, sucio=False) -> pd.DataFrame:
         import os
@@ -733,12 +773,7 @@ class DataGenerator:
         print("=" * 55)
 
 
-# ════════════════════════════════════════════════════════════
-# FUNCIÓN DE CONVENIENCIA — genera todos los perfiles
-# ════════════════════════════════════════════════════════════
-
 def generar_todos(carpeta="data", años=2):
-    """Genera un dataset limpio y uno sucio para cada tipo de negocio."""
     import os
     os.makedirs(carpeta, exist_ok=True)
     for tipo in PERFILES:
@@ -747,13 +782,8 @@ def generar_todos(carpeta="data", años=2):
         gen.guardar_csv(f"{carpeta}/test_sucio_{tipo}.csv", sucio=True)
 
 
-# ════════════════════════════════════════════════════════════
-# EJECUCIÓN DIRECTA
-# ════════════════════════════════════════════════════════════
-
 if __name__ == "__main__":
     import sys, os
-    # Permite correr desde cualquier directorio
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
     tipo = sys.argv[1] if len(sys.argv) > 1 else "restaurante"
@@ -763,9 +793,6 @@ if __name__ == "__main__":
 
     print(f"\nGenerando dataset para: {tipo}\n")
 
-    # ── Meses de historial (parámetro principal — la cantidad de
-    #    registros es una consecuencia y se muestra al final, en el
-    #    resumen, no se pide como input) ──
     while True:
         entrada = input("Meses de historial a generar (ej. 24): ").strip()
         try:
@@ -776,7 +803,6 @@ if __name__ == "__main__":
         except ValueError:
             print("  Ingresa un número entero mayor a 0.")
 
-    # ── Variables de negocio ──
     print("\nVariables de negocio a incluir:")
     print("  1. Ninguna")
     print("  2. Promociones")

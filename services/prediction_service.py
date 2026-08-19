@@ -26,6 +26,7 @@ from models.venta import Venta
 from models.dataset_usuario import DatasetUsuario
 from models.modelo_ml import ModeloML
 from models.configuracion_analisis import ConfiguracionAnalisis
+from models.evento_futuro import EventoFuturo, EventoEspecialFuturo
 
 MODELOS_DIR = "ml_models"
 
@@ -76,10 +77,22 @@ def _cargar_dataframe_usuario(user_id: int):
         "es_finde":            v.es_finde,
         "es_feriado":          v.es_feriado,
         "es_puente":           v.es_puente,
-        "es_quincena":         v.es_quincena,
-        "promocion":           v.promocion,
+        "dias_distancia_cobro": v.dias_distancia_cobro,
+        "pico_comida_rapida":   int(v.pico_comida_rapida) if v.pico_comida_rapida is not None else 0,
+        "fase_liquidez":         v.fase_liquidez,
+        "promocion":           int(v.promocion) if v.promocion is not None else 0,
         "descuento_pct":       v.descuento_pct,
-        "es_evento_especial":  v.es_evento_especial,
+        "es_evento_especial":  int(v.es_evento_especial) if v.es_evento_especial is not None else 0,
+        # Clima nocturno únicamente (horario real de operación,
+        # 4pm-11pm). "lluvia_manana_mm"/"temp_manana_promed" se
+        # probaron y, mediante prueba de ablación, se confirmó que no
+        # aportan señal real (diferencia de WAPE: 0.04 puntos, dentro
+        # del ruido) -- su alta importancia aparente era colinealidad
+        # con la lluvia nocturna (correlación 0.38), no una relación
+        # causal genuina. Se excluyen para simplificar el modelo sin
+        # costo de precisión.
+        "lluvia_nocturna_mm":    v.lluvia_nocturna_mm,
+        "temp_nocturna_promed":  v.temp_nocturna_promed,
     } for v in ventas]
 
     df = pd.DataFrame(data)
@@ -196,6 +209,81 @@ def obtener_config(user_id: int):
 
 
 # ════════════════════════════════════════════════════════════
+# EVENTOS FUTUROS — promociones (por producto) y eventos especiales
+# (por día completo) que el dueño YA SABE que van a pasar en una
+# fecha futura -- ver models/evento_futuro.py para la explicación
+# completa de por qué son 2 mecanismos separados.
+# ════════════════════════════════════════════════════════════
+
+def obtener_eventos_futuros(user_id: int) -> dict:
+    """
+    {"YYYY-MM-DD": {producto_o_"__TODOS__": {"promocion":0/1,
+    "es_evento_especial":0/1, "descuento_pct":float}}}
+    """
+    promos = EventoFuturo.query.filter_by(user_id=user_id).all()
+    especiales = EventoEspecialFuturo.query.filter_by(user_id=user_id).all()
+
+    resultado = {}
+    for e in promos:
+        fecha_str = e.fecha.strftime("%Y-%m-%d")
+        clave = e.producto if e.producto else "__TODOS__"
+        entrada = resultado.setdefault(fecha_str, {}).setdefault(clave, {})
+        entrada["promocion"] = int(e.es_promocion)
+        entrada["descuento_pct"] = e.descuento_pct or 0.0
+
+    for ev in especiales:
+        fecha_str = ev.fecha.strftime("%Y-%m-%d")
+        entrada = resultado.setdefault(fecha_str, {}).setdefault("__TODOS__", {})
+        entrada["es_evento_especial"] = 1
+
+    return resultado
+
+
+def guardar_evento_futuro(user_id: int, fecha, producto=None, es_promocion=False,
+                          es_evento_especial=False, descuento_pct=None, nota=None) -> dict:
+    resultado = {"promocion_guardada": False, "evento_especial_guardado": False}
+
+    if es_promocion or descuento_pct:
+        evento = EventoFuturo.query.filter_by(user_id=user_id, fecha=fecha, producto=producto).first()
+        if evento is None:
+            evento = EventoFuturo(user_id=user_id, fecha=fecha, producto=producto)
+            db.session.add(evento)
+        evento.es_promocion = bool(es_promocion)
+        evento.descuento_pct = float(descuento_pct) if descuento_pct not in (None, "") else None
+        evento.nota = nota
+        resultado["promocion_guardada"] = True
+
+    if es_evento_especial:
+        especial = EventoEspecialFuturo.query.filter_by(user_id=user_id, fecha=fecha).first()
+        if especial is None:
+            especial = EventoEspecialFuturo(user_id=user_id, fecha=fecha)
+            db.session.add(especial)
+        especial.nota = nota
+        resultado["evento_especial_guardado"] = True
+
+    db.session.commit()
+    return resultado
+
+
+def eliminar_evento_futuro(user_id: int, fecha, producto=None) -> bool:
+    evento = EventoFuturo.query.filter_by(user_id=user_id, fecha=fecha, producto=producto).first()
+    if evento is None:
+        return False
+    db.session.delete(evento)
+    db.session.commit()
+    return True
+
+
+def eliminar_evento_especial_futuro(user_id: int, fecha) -> bool:
+    especial = EventoEspecialFuturo.query.filter_by(user_id=user_id, fecha=fecha).first()
+    if especial is None:
+        return False
+    db.session.delete(especial)
+    db.session.commit()
+    return True
+
+
+# ════════════════════════════════════════════════════════════
 # CASOS DE USO — punto de entrada para blueprints/prediccion.py
 # Y para services/decision_engine.py (vía Insights)
 # ════════════════════════════════════════════════════════════
@@ -220,7 +308,9 @@ def ejecutar_prediccion(user_id: int, dias: int = None, forzar: bool = False) ->
         raise ValueError("No se encontraron datos. Sube un archivo primero.")
 
     model, _ = _obtener_modelo(user_id, df, config, forzar=forzar)
-    resultado = model.predecir(dias=dias, dias_operacion=config.dias_operacion_set())
+    eventos_futuros = obtener_eventos_futuros(user_id)
+    resultado = model.predecir(dias=dias, dias_operacion=config.dias_operacion_set(),
+                               eventos_futuros=eventos_futuros)
 
     promedio_dia_semana, promedio_diario_producto = _calcular_contexto_historico(df)
 
@@ -252,7 +342,6 @@ def ejecutar_prediccion(user_id: int, dias: int = None, forzar: bool = False) ->
 
     return {
         "estrategia":        resultado["resumen"]["estrategia"],
-        "objetivo_analisis": config.objetivo_analisis,
         "resumen":           resultado["resumen"],
         "diario":            diario_records,
         "por_producto":      resultado["por_producto"].to_dict(orient="records"),

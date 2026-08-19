@@ -58,10 +58,16 @@ def _guardar_ventas_usuario(df: pd.DataFrame, user_id: int, nombre_archivo: str)
                 es_finde=bool(r["es_finde"]),
                 es_feriado=bool(r["es_feriado"]),
                 es_puente=bool(r["es_puente"]),
-                es_quincena=bool(r["es_quincena"]),
+                dias_distancia_cobro=int(r["dias_distancia_cobro"]) if pd.notna(r.get("dias_distancia_cobro")) else None,
+                pico_comida_rapida=bool(r["pico_comida_rapida"]) if pd.notna(r.get("pico_comida_rapida")) else None,
+                fase_liquidez=int(r["fase_liquidez"]) if pd.notna(r.get("fase_liquidez")) else None,
                 promocion=bool(r["promocion"]) if pd.notna(r.get("promocion")) else None,
                 descuento_pct=float(r["descuento_pct"]) if pd.notna(r.get("descuento_pct")) else None,
                 es_evento_especial=bool(r["es_evento_especial"]) if pd.notna(r.get("es_evento_especial")) else None,
+                lluvia_manana_mm=float(r["lluvia_manana_mm"]) if pd.notna(r.get("lluvia_manana_mm")) else None,
+                temp_manana_promed=float(r["temp_manana_promed"]) if pd.notna(r.get("temp_manana_promed")) else None,
+                lluvia_nocturna_mm=float(r["lluvia_nocturna_mm"]) if pd.notna(r.get("lluvia_nocturna_mm")) else None,
+                temp_nocturna_promed=float(r["temp_nocturna_promed"]) if pd.notna(r.get("temp_nocturna_promed")) else None,
             ))
 
         db.session.bulk_save_objects(nuevas_ventas)
@@ -230,4 +236,19 @@ def confirmar():
 @login_required
 def reporte():
     flash("Sube un archivo para ver su resumen.", "info")
+    return redirect(url_for("upload.index"))
+
+
+@upload_bp.route("/upload/borrar-historial", methods=["POST"])
+@login_required
+def borrar_historial():
+    """Borra TODO el historial de ventas del usuario actual, para
+    poder subir un dataset nuevo desde cero (ej. tras regenerar con
+    correcciones) sin arrastrar datos viejos mezclados."""
+    borradas = Venta.query.filter_by(user_id=current_user.id).delete()
+    # También limpia el registro de datasets subidos, si existe, para
+    # que el hash/merge no compare contra un historial que ya no está.
+    DatasetUsuario.query.filter_by(user_id=current_user.id).delete()
+    db.session.commit()
+    flash(f"Historial eliminado: {borradas} filas de ventas borradas.", "success")
     return redirect(url_for("upload.index"))

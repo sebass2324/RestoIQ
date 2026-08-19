@@ -64,6 +64,20 @@ COLUMNAS_OBJETIVO = {
         "evento_especial", "evento", "festividad", "special_event",
         "es_evento", "dia_especial", "día_especial", "fecha_especial", "event",
     ],
+    "lluvia_manana_mm": [
+        "lluvia_manana_mm", "lluvia_mañana_mm", "lluvia_am", "rain_morning_mm",
+    ],
+    "temp_manana_promed": [
+        "temp_manana_promed", "temp_mañana_promed", "temperatura_manana",
+        "temp_am", "temperature_morning",
+    ],
+    "lluvia_nocturna_mm": [
+        "lluvia_nocturna_mm", "lluvia_noche_mm", "lluvia_pm", "rain_night_mm",
+    ],
+    "temp_nocturna_promed": [
+        "temp_nocturna_promed", "temp_noche_promed", "temperatura_nocturna",
+        "temp_pm", "temperature_night",
+    ],
 }
 
 # Columnas que DEBEN existir para que el análisis funcione
@@ -73,6 +87,8 @@ COLUMNAS_REQUERIDAS = ["fecha", "producto", "cantidad"]
 COLUMNAS_OPCIONALES = [
     "precio", "total", "cliente", "vendedor", "categoria",
     "promocion", "descuento_pct", "es_evento_especial",
+    "lluvia_manana_mm", "temp_manana_promed",
+    "lluvia_nocturna_mm", "temp_nocturna_promed",
 ]
 
 # Score mínimo de similitud para aceptar una columna (0-100)
@@ -116,6 +132,7 @@ class DataCleaner:
             "tiene_promocion":         False,
             "tiene_descuento":         False,
             "tiene_evento_especial":   False,
+            "tiene_clima":             False,
         }
 
     # ════════════════════════════════════════
@@ -206,7 +223,30 @@ class DataCleaner:
         mapeo = {}      # { "fecha": "Fecha Venta" }
         usadas  = set() # columnas del archivo ya asignadas
 
+        # PASADA 1 — coincidencia EXACTA primero. Necesaria porque hay
+        # pares de nombres objetivo deliberadamente muy parecidos entre
+        # sí (ej. "lluvia_manana_mm" vs. "lluvia_nocturna_mm" -- mismo
+        # prefijo/sufijo, pocas letras de diferencia). Con fuzzy puro,
+        # si el archivo solo trae UNA de las dos (ej. solo la nocturna),
+        # el objetivo que se procesa primero en el diccionario puede
+        # "robarse" esa columna por similitud alta, aunque no sea la
+        # suya -- exactamente el bug que esto corrige. Una coincidencia
+        # exacta nunca debe perder frente a una aproximada de otro
+        # objetivo distinto.
         for col_objetivo, variantes in COLUMNAS_OBJETIVO.items():
+            for col_norm, col_original in cols_normalizadas.items():
+                if col_original in usadas:
+                    continue
+                if col_norm in variantes:
+                    mapeo[col_objetivo] = col_original
+                    usadas.add(col_original)
+                    break
+
+        # PASADA 2 — fuzzy matching, solo para lo que quedó sin resolver
+        # por coincidencia exacta (typos, abreviaciones, otro idioma).
+        for col_objetivo, variantes in COLUMNAS_OBJETIVO.items():
+            if col_objetivo in mapeo:
+                continue
             mejor_col    = None
             mejor_score  = 0
 
@@ -255,6 +295,10 @@ class DataCleaner:
         self.reporte["tiene_promocion"]       = "promocion" in mapeo
         self.reporte["tiene_descuento"]       = "descuento_pct" in mapeo
         self.reporte["tiene_evento_especial"] = "es_evento_especial" in mapeo
+        self.reporte["tiene_clima"]           = any(
+            c in mapeo for c in ("lluvia_manana_mm", "temp_manana_promed",
+                                 "lluvia_nocturna_mm", "temp_nocturna_promed")
+        )
 
         if not self.reporte["tiene_precio"] and not self.reporte["tiene_total"]:
             self.reporte["advertencias"].append(
@@ -444,6 +488,15 @@ class DataCleaner:
             )
             df["descuento_pct"] = pd.to_numeric(df["descuento_pct"], errors="coerce").fillna(0.0)
 
+        # Clima: se deja como numérico, SIN fillna(0) — un día sin dato
+        # de clima no significa "0mm/0°C", significa "no sabemos", y
+        # sales_model.py ya rellena esos vacíos con el promedio (ver
+        # _preparar_features). Forzar 0 aquí sería un dato falso.
+        for col in ("lluvia_manana_mm", "temp_manana_promed",
+                   "lluvia_nocturna_mm", "temp_nocturna_promed"):
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors="coerce")
+
         return df
 
     @staticmethod
@@ -555,7 +608,7 @@ class DataCleaner:
 
         return df
     
-    def _agregar_features_temporales(self, df):   
+    def _agregar_features_temporales(self, df):
         fecha = pd.to_datetime(df["fecha"])
         df["dia_semana"]  = fecha.dt.dayofweek
         df["mes"]         = fecha.dt.month
@@ -566,8 +619,37 @@ class DataCleaner:
         ayer    = (fecha - timedelta(days=1)).dt.strftime("%Y-%m-%d")
         maniana = (fecha + timedelta(days=1)).dt.strftime("%Y-%m-%d")
         df["es_puente"]   = (ayer.isin(FERIADOS_ECUADOR) | maniana.isin(FERIADOS_ECUADOR)).astype(int)
-        dia_mes           = fecha.dt.day
-        df["es_quincena"] = ((dia_mes.between(1, 7)) | (dia_mes.between(15, 21))).astype(int)
+
+        # Reemplaza el viejo "es_quincena" (bandera binaria, meseta
+        # ancha de 14 días) -- misma lógica EXACTA que
+        # services/data_generator.py y services/sales_model.py, deben
+        # coincidir siempre entre generación, limpieza y predicción.
+        dia_mes = fecha.dt.day
+        dias_en_mes = fecha.dt.days_in_month
+
+        dist_15 = (dia_mes - 15).abs()
+        dist_fin = np.minimum(dia_mes - 1, dias_en_mes - dia_mes)
+        df["dias_distancia_cobro"] = np.minimum(dist_15, dist_fin)
+
+        es_ventana_pago = (
+            dia_mes.isin([15, 16, 1]) | (dia_mes == dias_en_mes)
+            | (
+                ((dia_mes == dias_en_mes - 2) | (dia_mes == dias_en_mes - 1) | dia_mes.isin([13, 14]))
+                & (df["dia_semana"] == 4)
+            )
+        )
+        es_finde_alto = df["dia_semana"].isin([4, 5])
+        df["pico_comida_rapida"] = (es_ventana_pago & es_finde_alto).astype(int)
+
+        cond_pico = (df["pico_comida_rapida"] == 1) | dia_mes.isin([15, 1]) | (dia_mes == dias_en_mes)
+        cond_post_pago = dia_mes.isin([2, 16, 17])
+        cond_escasez = (
+            (dia_mes.isin([13, 14]) | (dia_mes == dias_en_mes - 2) | (dia_mes == dias_en_mes - 1))
+            & (df["pico_comida_rapida"] == 0)
+        )
+        df["fase_liquidez"] = np.select(
+            [cond_pico, cond_post_pago, cond_escasez], [3, 2, 0], default=1
+        )
         return df
 
     

@@ -54,7 +54,10 @@ def index():
             config = ConfiguracionAnalisis(user_id=current_user.id)
             db.session.add(config)
 
-        config.horizonte_dias = int(request.form.get("horizonte_dias", 7))
+        # Direct Forecasting solo entrena hasta HORIZONTE_MAX=14 días --
+        # nunca aceptar un horizonte mayor, aunque el formulario lo
+        # permitiera por error (ej. un valor viejo de 30 guardado antes).
+        config.horizonte_dias = min(int(request.form.get("horizonte_dias", 7)), 14)
 
         dias_marcados = request.form.getlist("dias_operacion")
         config.dias_operacion = ",".join(dias_marcados) if dias_marcados else "0,1,2,3,4,5,6"
@@ -67,7 +70,10 @@ def index():
         config.considerar_feriados    = bool(request.form.get("considerar_feriados"))
 
         config.reentrenar_automatico  = bool(request.form.get("reentrenar_automatico"))
-        config.objetivo_analisis      = request.form.get("objetivo_analisis", "ingresos")
+        config.vista_prediccion_default = request.form.get("vista_prediccion_default", "platos")
+        # "objetivo_analisis" (ingresos/inventario) se quitó -- el
+        # sistema predice únicamente cantidades, sin proyección de
+        # ingresos, así que esa elección ya no tiene sentido.
 
         db.session.commit()
 
