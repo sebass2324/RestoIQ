@@ -17,6 +17,7 @@ consecuencia, la fila de fecha *t* nunca ve su cantidad ni la del futuro.
 from __future__ import annotations
 
 import os
+import importlib
 from datetime import timedelta
 
 import lightgbm as lgb
@@ -27,6 +28,26 @@ from sklearn.metrics import (
     accuracy_score, confusion_matrix, f1_score,
     precision_recall_fscore_support,
 )
+
+
+def _cargar_calculo_liquidez():
+    """Mismo patrón de import tolerante que classification_service._cargar_feriados:
+    evita mantener una segunda copia de la fórmula de fase_liquidez/
+    dias_distancia_cobro/pico_comida_rapida que termine divergiendo de
+    la del generador (fue justo ese tipo de copia -- es_quincena
+    binario -- lo que causó el bug original)."""
+    for mod in ["services.data_generator", "data_generator"]:
+        try:
+            m = importlib.import_module(mod)
+            return m.calcular_features_liquidez
+        except Exception:
+            continue
+    raise ImportError(
+        "No se encontró calcular_features_liquidez en data_generator.py"
+    )
+
+
+_CALCULAR_LIQUIDEZ = _cargar_calculo_liquidez()
 
 
 CLASES = ["Baja", "Media", "Alta"]
@@ -41,7 +62,8 @@ LGBM_PARAMS = {
 }
 FEATURES_CALENDARIO = [
     "dia_semana", "dia_mes", "mes", "semana_anio", "es_finde",
-    "es_feriado", "es_puente", "es_quincena",
+    "es_feriado", "es_puente",
+    "dias_distancia_cobro", "pico_comida_rapida", "fase_liquidez",
 ]
 FEATURES_HISTORICAS = [
     "lag_1", "lag_7", "lag_14", "lag_28", "rolling_7_mean",
@@ -49,6 +71,11 @@ FEATURES_HISTORICAS = [
     "media_historica", "volatilidad_historica",
 ]
 FEATURES_COMERCIALES = ["promocion", "descuento_pct", "es_evento_especial"]
+# Señal real de negocio (el propietario confirmó que la lluvia reduce
+# la venta), no solo ruido -- pero son variables continuas, así que
+# hay que vigilar que no acaparen importancia por pura cardinalidad
+# (mismo riesgo ya detectado en sales_model.py).
+FEATURES_CLIMA = ["lluvia_nocturna_mm", "temp_nocturna_promed"]
 
 
 class ModeloAbastecimiento:
@@ -88,7 +115,7 @@ class ModeloAbastecimiento:
             "dia_semana": fecha.weekday(), "dia_mes": fecha.day,
             "mes": fecha.month, "semana_anio": int(fecha.isocalendar()[1]),
             "es_finde": int(fecha.weekday() >= 5),
-            "es_quincena": int(1 <= fecha.day <= 7 or 15 <= fecha.day <= 21),
+            **_CALCULAR_LIQUIDEZ(fecha),
         }
 
     def _agregar_producto_dia(self, df):
@@ -99,7 +126,9 @@ class ModeloAbastecimiento:
         agg = {"cantidad": "sum"}
         for c, fn in (("precio", "mean"), ("categoria", "first"),
                       ("descuento_pct", "mean"), ("promocion", "max"),
-                      ("es_evento_especial", "max")):
+                      ("es_evento_especial", "max"),
+                      ("lluvia_nocturna_mm", "first"),
+                      ("temp_nocturna_promed", "first")):
             if c in df.columns:
                 agg[c] = fn
         for c in FEATURES_CALENDARIO:
@@ -117,10 +146,13 @@ class ModeloAbastecimiento:
             p.index.name = "fecha"
             p["producto"] = producto
             p["cantidad"] = p["cantidad"].fillna(0.0)
-            for c in ("categoria", "precio"):
+            for c in ("categoria", "precio", "temp_nocturna_promed"):
                 if c in p:
                     p[c] = p[c].ffill().bfill()
-            for c in FEATURES_COMERCIALES:
+            # lluvia_nocturna_mm sí es válido rellenar con 0 (sin lluvia
+            # registrada = 0mm es un valor real, a diferencia de la
+            # temperatura donde un 0.0 sería un dato absurdo/falso).
+            for c in FEATURES_COMERCIALES + ["lluvia_nocturna_mm"]:
                 if c in p:
                     p[c] = pd.to_numeric(p[c], errors="coerce").fillna(0.0)
             piezas.append(p.reset_index())
@@ -228,7 +260,7 @@ class ModeloAbastecimiento:
                 base[c] = [self._fecha_features(f)[c] for f in df["fecha"]]
             else:
                 base[c] = 0
-        for c in FEATURES_COMERCIALES + FEATURES_HISTORICAS:
+        for c in FEATURES_COMERCIALES + FEATURES_HISTORICAS + FEATURES_CLIMA:
             base[c] = pd.to_numeric(df[c], errors="coerce").fillna(0.0) if c in df else 0.0
 
         # LightGBM trata las variables categóricas nativamente: evita crear

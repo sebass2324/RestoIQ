@@ -641,8 +641,11 @@ class DataCleaner:
         es_finde_alto = df["dia_semana"].isin([4, 5])
         df["pico_comida_rapida"] = (es_ventana_pago & es_finde_alto).astype(int)
 
+        # Fase de liquidez -- CORREGIDO con la entrevista real: "15 al
+        # 21 buena venta, del 31 al 3 también sube". Debe coincidir
+        # EXACTO con data_generator.py y sales_model.py.
         cond_pico = (df["pico_comida_rapida"] == 1) | dia_mes.isin([15, 1]) | (dia_mes == dias_en_mes)
-        cond_post_pago = dia_mes.isin([2, 16, 17])
+        cond_post_pago = dia_mes.isin([16, 17, 18, 2, 3])
         cond_escasez = (
             (dia_mes.isin([13, 14]) | (dia_mes == dias_en_mes - 2) | (dia_mes == dias_en_mes - 1))
             & (df["pico_comida_rapida"] == 0)

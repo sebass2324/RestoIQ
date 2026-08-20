@@ -14,6 +14,7 @@ con ValueError.
 import os
 import importlib
 from datetime import datetime, timedelta
+import requests
 import pandas as pd
 from services.classification_model import ModeloAbastecimiento
 from services.matriz_confusion_img import generar_matriz_confusion_png
@@ -33,6 +34,11 @@ HORIZONTE_DEFECTO = 7
 # menos UMBRAL_FILAS_NUEVAS filas O un UMBRAL_CRECIMIENTO_PCT%.
 UMBRAL_FILAS_NUEVAS    = 20
 UMBRAL_CRECIMIENTO_PCT = 0.05
+
+# Coordenadas de Durán, Ecuador -- mismo proveedor (Visual Crossing)
+# que ya usas para el histórico de precipitación.
+VISUAL_CROSSING_API_KEY = os.environ.get("VISUAL_CROSSING_API_KEY", "")
+UBICACION_CLIMA = "Duran,Ecuador"
 
 
 def _supera_umbral_reentrenamiento(filas_actuales: int, filas_anteriores: int) -> bool:
@@ -63,7 +69,22 @@ def _cargar_feriados():
     return set()
 
 
+def _cargar_calculo_liquidez():
+    """Misma función que ya usa data_generator.py y classification_model.py
+    -- una sola fuente de verdad para fase_liquidez/dias_distancia_cobro/
+    pico_comida_rapida, para no repetir la copia divergente que causó
+    el bug original de es_quincena."""
+    for mod in ["services.data_generator", "data_generator"]:
+        try:
+            m = importlib.import_module(mod)
+            return m.calcular_features_liquidez
+        except Exception:
+            continue
+    raise ImportError("No se encontró calcular_features_liquidez en data_generator.py")
+
+
 FERIADOS = _cargar_feriados()
+_CALCULAR_LIQUIDEZ = _cargar_calculo_liquidez()
 
 
 def _features_fecha(fecha: pd.Timestamp) -> dict:
@@ -71,7 +92,6 @@ def _features_fecha(fecha: pd.Timestamp) -> dict:
     dia = fecha.weekday()
     ayer = (fecha - timedelta(days=1)).strftime("%Y-%m-%d")
     maniana = (fecha + timedelta(days=1)).strftime("%Y-%m-%d")
-    dia_mes = fecha.day
     return {
         "dia_semana":  dia,
         "mes":         fecha.month,
@@ -79,8 +99,61 @@ def _features_fecha(fecha: pd.Timestamp) -> dict:
         "es_finde":    int(dia in [5, 6]),
         "es_feriado":  int(fecha_str in FERIADOS),
         "es_puente":   int(ayer in FERIADOS or maniana in FERIADOS),
-        "es_quincena": int(1 <= dia_mes <= 7 or 15 <= dia_mes <= 21),
+        **_CALCULAR_LIQUIDEZ(fecha),
     }
+
+
+def _pronostico_clima(fecha: pd.Timestamp):
+    """Pronóstico real vía Visual Crossing (mismo proveedor que ya usas
+    para el histórico de lluvia). Retorna None si falla -- sin API key,
+    sin internet, fecha fuera del rango de pronóstico, etc. -- para que
+    el llamador caiga al respaldo climatológico y la predicción nunca
+    se rompa por falta de conexión."""
+    if not VISUAL_CROSSING_API_KEY:
+        return None
+    try:
+        url = (
+            "https://weather.visualcrossing.com/VisualCrossingWebServices/"
+            f"rest/services/timeline/{UBICACION_CLIMA}/{fecha.strftime('%Y-%m-%d')}"
+        )
+        resp = requests.get(url, params={
+            "unitGroup": "metric", "include": "days",
+            "key": VISUAL_CROSSING_API_KEY, "contentType": "json",
+        }, timeout=5)
+        resp.raise_for_status()
+        dia = resp.json()["days"][0]
+        return {
+            "lluvia_nocturna_mm":   float(dia.get("precip") or 0.0),
+            "temp_nocturna_promed": float(dia.get("temp") or 0.0),
+        }
+    except Exception:
+        return None
+
+
+def _climatologia_por_mes(df: pd.DataFrame) -> dict:
+    """Respaldo cuando el pronóstico real falla: promedio histórico de
+    lluvia/temperatura de ESE MISMO MES del calendario (no el promedio
+    anual completo -- agosto se parece a otros agostos, no a diciembre)."""
+    if "lluvia_nocturna_mm" not in df.columns or "temp_nocturna_promed" not in df.columns:
+        return {}
+    tmp = df[["fecha", "lluvia_nocturna_mm", "temp_nocturna_promed"]].copy()
+    tmp["mes"] = pd.to_datetime(tmp["fecha"]).dt.month
+    return tmp.groupby("mes")[["lluvia_nocturna_mm", "temp_nocturna_promed"]].mean().to_dict("index")
+
+
+def _clima_para_fecha(fecha: pd.Timestamp, climatologia: dict) -> dict:
+    real = _pronostico_clima(fecha)
+    if real is not None:
+        return real
+    respaldo = climatologia.get(fecha.month)
+    if respaldo:
+        return {
+            "lluvia_nocturna_mm":   float(respaldo["lluvia_nocturna_mm"]),
+            "temp_nocturna_promed": float(respaldo["temp_nocturna_promed"]),
+        }
+    # Último recurso si ni el pronóstico ni el histórico tienen datos:
+    # sin lluvia, temperatura promedio típica de Durán.
+    return {"lluvia_nocturna_mm": 0.0, "temp_nocturna_promed": 26.0}
 
 
 def _fechas_futuras(dias: int, dias_operacion=None) -> list:
@@ -97,26 +170,35 @@ def _fechas_futuras(dias: int, dias_operacion=None) -> list:
 
 
 def _cargar_dataframe_usuario(user_id: int):
-    """Lee ventas del usuario, incluida categoria (propia de este módulo)."""
+    """Lee ventas del usuario, incluida categoria (propia de este módulo).
+
+    NOTA: requiere que models/venta.py tenga las columnas
+    fase_liquidez, dias_distancia_cobro, pico_comida_rapida,
+    lluvia_nocturna_mm y temp_nocturna_promed (reemplazando
+    es_quincena) -- ver migración pendiente."""
     ventas = Venta.query.filter_by(user_id=user_id).all()
     if not ventas:
         return None
     data = [{
-        "fecha":               v.fecha,
-        "producto":            v.producto,
-        "categoria":           v.categoria,
-        "cantidad":            v.cantidad,
-        "precio":              v.precio,
-        "dia_semana":          v.dia_semana,
-        "mes":                 v.mes,
-        "semana_anio":         v.semana_anio,
-        "es_finde":            v.es_finde,
-        "es_feriado":          v.es_feriado,
-        "es_puente":           v.es_puente,
-        "es_quincena":         v.es_quincena,
-        "promocion":           v.promocion,
-        "descuento_pct":       v.descuento_pct,
-        "es_evento_especial":  v.es_evento_especial,
+        "fecha":                 v.fecha,
+        "producto":              v.producto,
+        "categoria":             v.categoria,
+        "cantidad":              v.cantidad,
+        "precio":                v.precio,
+        "dia_semana":            v.dia_semana,
+        "mes":                   v.mes,
+        "semana_anio":           v.semana_anio,
+        "es_finde":              v.es_finde,
+        "es_feriado":            v.es_feriado,
+        "es_puente":             v.es_puente,
+        "dias_distancia_cobro":  v.dias_distancia_cobro,
+        "pico_comida_rapida":    v.pico_comida_rapida,
+        "fase_liquidez":         v.fase_liquidez,
+        "promocion":             v.promocion,
+        "descuento_pct":         v.descuento_pct,
+        "es_evento_especial":    v.es_evento_especial,
+        "lluvia_nocturna_mm":    v.lluvia_nocturna_mm,
+        "temp_nocturna_promed":  v.temp_nocturna_promed,
     } for v in ventas]
     df = pd.DataFrame(data)
     df["fecha"] = pd.to_datetime(df["fecha"])
@@ -188,6 +270,16 @@ def _obtener_modelo(user_id: int, df: pd.DataFrame, forzar: bool = False):
     return modelo, deltas
 
 
+_ETIQUETA_FASE_LIQUIDEZ = {
+    3: "Cobro activo (pico)",
+    2: "Post-pago inmediato",
+    0: "Escasez (antes del pago)",
+    # fase 1 = neutral, no se etiqueta (comportamiento normal, no un
+    # factor a destacar -- igual que "Día laboral" cuando no hay nada
+    # especial).
+}
+
+
 def _factores_dia(feats_dia: dict) -> list:
     """Etiquetas legibles de los factores de contexto activos ese
     día. NO incluye promoción/evento: para fechas futuras esos
@@ -196,7 +288,9 @@ def _factores_dia(feats_dia: dict) -> list:
     if feats_dia.get("es_finde"):    etiquetas.append("Fin de semana")
     if feats_dia.get("es_feriado"):  etiquetas.append("Feriado")
     if feats_dia.get("es_puente"):   etiquetas.append("Puente")
-    if feats_dia.get("es_quincena"): etiquetas.append("Quincena")
+    etiqueta_liquidez = _ETIQUETA_FASE_LIQUIDEZ.get(feats_dia.get("fase_liquidez"))
+    if etiqueta_liquidez:
+        etiquetas.append(etiqueta_liquidez)
     return etiquetas or ["Día laboral"]
 
 
@@ -211,6 +305,7 @@ def _predecir_horizonte(modelo: ModeloAbastecimiento, df: pd.DataFrame, dias: in
     )
     productos = sorted(df["producto"].unique().tolist())
     fechas = _fechas_futuras(dias, dias_operacion)
+    climatologia = _climatologia_por_mes(df)
 
     # Armar TODOS los contextos primero (día × producto), sin predecir
     # todavía — la predicción se hace una sola vez, en lote, más abajo.
@@ -223,9 +318,11 @@ def _predecir_horizonte(modelo: ModeloAbastecimiento, df: pd.DataFrame, dias: in
     for fecha in fechas:
         feats_dia = _features_fecha(fecha)
         factores = _factores_dia(feats_dia)
+        clima_dia = _clima_para_fecha(fecha, climatologia)
         for prod in productos:
             contextos.append({
                 **feats_dia,
+                **clima_dia,
                 "fecha":               fecha,
                 "producto":            prod,
                 "categoria":           cat_por_producto.get(prod),

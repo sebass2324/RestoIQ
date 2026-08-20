@@ -208,6 +208,13 @@ def obtener_config(user_id: int):
     return ConfiguracionAnalisis.query.filter_by(user_id=user_id).first()
 
 
+def obtener_productos_usuario(user_id: int) -> list:
+    """Lista de productos únicos del usuario, para selectores en la UI
+    (ej. declarar un evento futuro para un producto específico)."""
+    filas = Venta.query.with_entities(Venta.producto).filter_by(user_id=user_id).distinct().all()
+    return sorted({f[0] for f in filas})
+
+
 # ════════════════════════════════════════════════════════════
 # EVENTOS FUTUROS — promociones (por producto) y eventos especiales
 # (por día completo) que el dueño YA SABE que van a pasar en una

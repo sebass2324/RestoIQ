@@ -395,21 +395,61 @@ CLASICOS_ASTILLERO = {
 F_CLASICO_TARDE = 1.30
 F_CLASICO_NOCHE = 0.80
 
-DISPERSION_NB_BASE = 25
+DISPERSION_NB_BASE = 70
+# Subido de 25 a 70: con 25 el ruido aleatorio día a día (via
+# np.random.normal) tapaba la señal real de negocio (quincena, finde,
+# lluvia) que sí está calibrada según la entrevista. A mayor
+# dispersión, menor varianza relativa por día -- el patrón de negocio
+# pesa más que el ruido puro.
+
+
+def _es_evento_especial(fecha_dt: pd.Timestamp, tipo: str) -> bool:
+    """
+    Reemplaza el boost aleatorio de 'evento_especial' (5% de los días,
+    sin causa real) por fechas concretas mencionadas en la entrevista:
+    día de la madre, fiestas de Durán (octubre, según el propietario),
+    y diciembre. Antes era ruido puro sin relación con el calendario
+    real del negocio.
+    """
+    mes, dia = fecha_dt.month, fecha_dt.day
+
+    # Día de la madre en Ecuador: segundo domingo de mayo
+    if mes == 5:
+        primer_dia = pd.Timestamp(fecha_dt.year, 5, 1)
+        primer_domingo = 1 + (6 - primer_dia.weekday()) % 7
+        segundo_domingo = primer_domingo + 7
+        if dia == segundo_domingo:
+            return True
+
+    # Fiestas de Durán, según la entrevista al propietario ("en
+    # octubre las fiestas de duran también se vende más") -- ventana
+    # de la primera quincena de octubre, específica de El Chamo
+    # Burger por ubicarse en Durán.
+    if tipo == "elchamoburger" and mes == 10 and 1 <= dia <= 9:
+        return True
+
+    # Diciembre: temporada navideña/fin de año, mencionada aparte de
+    # las fiestas de Durán ("diciembre también es bueno").
+    if mes == 12 and dia >= 20:
+        return True
+
+    return False
 
 
 # ════════════════════════════════════════════════════════════
 # HELPERS DE FEATURES TEMPORALES
 # ════════════════════════════════════════════════════════════
 
-def _features_temporales(fecha_dt: pd.Timestamp) -> dict:
-    fecha_str = fecha_dt.strftime("%Y-%m-%d")
+def calcular_features_liquidez(fecha_dt: pd.Timestamp) -> dict:
+    """
+    Única fuente de verdad para dias_distancia_cobro, pico_comida_rapida
+    y fase_liquidez. Extraída de _features_temporales para que
+    services/classification_model.py y services/classification_service.py
+    la importen en vez de mantener una copia propia -- una copia
+    divergente (es_quincena binario) fue justo la causa del bug
+    original. No cambia ningún valor generado, es el mismo cálculo.
+    """
     dia_semana = fecha_dt.weekday()
-    es_finde   = int(dia_semana in [5, 6])
-    es_feriado = int(fecha_str in FERIADOS_ECUADOR)
-    ayer    = (fecha_dt - timedelta(days=1)).strftime("%Y-%m-%d")
-    maniana = (fecha_dt + timedelta(days=1)).strftime("%Y-%m-%d")
-    es_puente = int(ayer in FERIADOS_ECUADOR or maniana in FERIADOS_ECUADOR)
     dia_mes = fecha_dt.day
     dias_en_mes = fecha_dt.days_in_month
 
@@ -434,14 +474,36 @@ def _features_temporales(fecha_dt: pd.Timestamp) -> dict:
 
     # Fase de liquidez: 3=cobro activo, 2=post-pago inmediato,
     # 1=neutral, 0=escasez real (días antes del pago, sin adelanto).
+    # Ventanas ajustadas según la entrevista al propietario: "apartir
+    # del 15 al 21 hay buena venta ya después baja, del 31 al 3
+    # también sube la venta" -- ambas ventanas duran ~1 semana con
+    # decaimiento por bloques, no un solo día puntual como estaba
+    # antes (que solo cubría 15-17 y dejaba 18-21 en neutral, sin
+    # calzar con lo reportado).
     if pico_comida_rapida == 1 or dia_mes in (15, dias_en_mes, 1):
         fase_liquidez = 3
-    elif dia_mes in (2, 16, 17):
+    elif dia_mes in (16, 17, 18, 2, 3):
         fase_liquidez = 2
     elif dia_mes in (13, 14, dias_en_mes - 2, dias_en_mes - 1) and pico_comida_rapida == 0:
         fase_liquidez = 0
     else:
         fase_liquidez = 1
+
+    return {
+        "dias_distancia_cobro": dias_distancia_cobro,
+        "pico_comida_rapida":   pico_comida_rapida,
+        "fase_liquidez":        fase_liquidez,
+    }
+
+
+def _features_temporales(fecha_dt: pd.Timestamp) -> dict:
+    fecha_str = fecha_dt.strftime("%Y-%m-%d")
+    dia_semana = fecha_dt.weekday()
+    es_finde   = int(dia_semana in [5, 6])
+    es_feriado = int(fecha_str in FERIADOS_ECUADOR)
+    ayer    = (fecha_dt - timedelta(days=1)).strftime("%Y-%m-%d")
+    maniana = (fecha_dt + timedelta(days=1)).strftime("%Y-%m-%d")
+    es_puente = int(ayer in FERIADOS_ECUADOR or maniana in FERIADOS_ECUADOR)
 
     return {
         "dia_semana":   dia_semana,
@@ -450,9 +512,7 @@ def _features_temporales(fecha_dt: pd.Timestamp) -> dict:
         "es_finde":     es_finde,
         "es_feriado":   es_feriado,
         "es_puente":    es_puente,
-        "dias_distancia_cobro": dias_distancia_cobro,
-        "pico_comida_rapida":   pico_comida_rapida,
-        "fase_liquidez":        fase_liquidez,
+        **calcular_features_liquidez(fecha_dt),
     }
 
 
@@ -516,7 +576,14 @@ class DataGenerator:
                 print(f"[data_generator] No se pudo obtener clima: {e}")
 
         choque_anterior = {nombre: 0.0 for nombre, _, _, _ in self.perfil["productos"]}
-        PESO_MOMENTUM  = 0.15
+        PESO_MOMENTUM  = 0.04
+        # Bajado de 0.15 a 0.04: el momentum encadenaba el ruido de un
+        # día al siguiente (un mal día generaba "resaca" al día
+        # siguiente sin causa de negocio real), amplificando la
+        # varianza total sin venir de la entrevista. Se deja un
+        # remanente muy pequeño en vez de eliminarlo del todo, para no
+        # perder la estructura del código por si se necesita en el
+        # futuro para simular una racha real (ej. viralización).
         DECAIMIENTO    = 0.35
 
         demanda_base_promedio = np.mean([d for _, _, d, _ in self.perfil["productos"]])
@@ -541,7 +608,7 @@ class DataGenerator:
             tendencia = 1.005 ** meses_transcurridos
             f_dia           = factor_dia[fecha.weekday()]
             f_mes           = factor_mes[fecha.month]
-            evento_especial = random.uniform(1.3, 2.0) if random.random() < 0.05 else 1.0
+            evento_especial = random.uniform(1.3, 2.0) if _es_evento_especial(fecha, self.tipo) else 1.0
 
             feats = _features_temporales(fecha)
             clima_dia = clima_por_fecha.get(fecha.strftime("%Y-%m-%d"), {})
@@ -649,6 +716,15 @@ class DataGenerator:
                     * impulso
                 )
 
+                # Binomial negativa (NB): estándar de industria para
+                # modelar conteos de demanda con sobre-dispersión
+                # (varianza > media) -- respaldo en literatura de
+                # forecasting retail (Poisson-Gamma / GLM binomial
+                # negativo), a diferencia de una normal truncada que
+                # exigiría justificar por qué se se aparta del
+                # estándar. mu = media (todos los factores de negocio
+                # ya calibrados), dispersion controla la varianza por
+                # producto (ver dispersion_por_producto, DISPERSION_NB_BASE).
                 dispersion = dispersion_por_producto[nombre]
                 mu = max(demanda_esperada, 0.01)
                 p  = dispersion / (dispersion + mu)

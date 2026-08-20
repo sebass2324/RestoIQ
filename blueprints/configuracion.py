@@ -4,6 +4,7 @@ from models import db
 from models.venta import Venta
 from models.dataset_usuario import DatasetUsuario
 from models.configuracion_analisis import ConfiguracionAnalisis
+from services.prediction_service import obtener_productos_usuario
 
 configuracion_bp = Blueprint("configuracion", __name__)
 
@@ -86,4 +87,5 @@ def index():
         es_primera_vez=es_primera_vez,
         columnas=columnas,
         dias_semana=DIAS_SEMANA_LABELS,
+        productos=obtener_productos_usuario(current_user.id),
     )

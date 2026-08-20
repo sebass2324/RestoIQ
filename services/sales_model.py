@@ -147,9 +147,11 @@ class SalesModel:
         es_finde_alto = dia in (4, 5)
         pico_comida_rapida = int(es_ventana_pago and es_finde_alto)
 
+        # Fase de liquidez: 3=cobro activo, 2=post-pago inmediato,
+        # 1=neutral, 0=escasez. Debe coincidir EXACTO con data_generator.py.
         if pico_comida_rapida == 1 or dia_mes in (15, dias_en_mes, 1):
             fase_liquidez = 3
-        elif dia_mes in (2, 16, 17):
+        elif dia_mes in (16, 17, 18, 2, 3):
             fase_liquidez = 2
         elif dia_mes in (13, 14, dias_en_mes - 2, dias_en_mes - 1) and pico_comida_rapida == 0:
             fase_liquidez = 0

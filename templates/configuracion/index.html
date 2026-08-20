@@ -445,6 +445,15 @@
       <label>Fecha</label>
       <input type="date" id="eventoFecha">
     </div>
+    <div class="campo">
+      <label>Aplica a</label>
+      <select id="eventoProducto" style="border:1px solid var(--border);border-radius:8px;padding:.45rem .6rem;font-size:.82rem;width:200px;">
+        <option value="">Todos los productos</option>
+        {% for p in productos %}
+          <option value="{{ p }}">{{ p }}</option>
+        {% endfor %}
+      </select>
+    </div>
     <div class="campo campo-check">
       <input type="checkbox" id="eventoPromocion">
       <label for="eventoPromocion">Promoción</label>
@@ -459,6 +468,9 @@
     </div>
     <button type="button" class="btn-agregar-evento" id="btnAgregarEvento">Agregar</button>
   </div>
+  <p class="eventos-desc" style="margin:-.5rem 0 .9rem;">
+    "Todos los productos" es un atajo — recuerda que tus datos reales muestran promociones producto por producto, no todo el local a la vez. Declarar por producto específico es más fiel a como funciona tu negocio.
+  </p>
 
   <div class="lista-eventos" id="listaEventos">
     <p style="font-size:.78rem;color:var(--gray-mid)">Sin promociones/eventos declarados todavía.</p>
@@ -517,16 +529,28 @@
         return;
       }
 
-      wrap.innerHTML = fechas.map(fecha => {
-        const ev = data.eventos[fecha];
+      // Cada fecha puede tener varios eventos (uno por producto, o
+      // "__TODOS__") -- se aplana a una fila por (fecha, producto).
+      const filas = [];
+      fechas.forEach(fecha => {
+        Object.entries(data.eventos[fecha]).forEach(([clave, ev]) => {
+          filas.push({ fecha, clave, ev });
+        });
+      });
+      filas.sort((a, b) => a.fecha.localeCompare(b.fecha));
+
+      wrap.innerHTML = filas.map(({ fecha, clave, ev }) => {
         const tags = [];
         if (ev.promocion) tags.push(`<span class="evento-tag promo">Promoción${ev.descuento_pct ? " " + ev.descuento_pct + "%" : ""}</span>`);
         if (ev.es_evento_especial) tags.push(`<span class="evento-tag especial">Evento especial</span>`);
+        const etiquetaProducto = clave === "__TODOS__" ? "Todos los productos" : clave;
+        const paramProducto = clave === "__TODOS__" ? "" : encodeURIComponent(clave);
         return `
           <div class="evento-item">
             <span class="evento-fecha">${formatFechaEvento(fecha)}</span>
+            <span style="font-size:.75rem;color:var(--gray-mid);min-width:140px;">${etiquetaProducto}</span>
             <div class="evento-tags">${tags.join("")}</div>
-            <button class="btn-borrar-evento" onclick="borrarEventoFuturo('${fecha}')" title="Quitar">
+            <button class="btn-borrar-evento" onclick="borrarEventoFuturo('${fecha}', '${paramProducto}')" title="Quitar">
               <i class="bi bi-x-lg"></i>
             </button>
           </div>`;
@@ -537,9 +561,11 @@
   document.getElementById("btnAgregarEvento").addEventListener("click", async () => {
     const fecha = document.getElementById("eventoFecha").value;
     if (!fecha) { alert("Elige una fecha."); return; }
+    const producto = document.getElementById("eventoProducto").value || null;
 
     const body = {
       fecha,
+      producto,
       es_promocion: document.getElementById("eventoPromocion").checked,
       es_evento_especial: document.getElementById("eventoEspecial").checked,
       descuento_pct: document.getElementById("eventoDescuento").value || null,
@@ -555,6 +581,7 @@
       if (!data.ok) { alert("Error: " + data.error); return; }
 
       document.getElementById("eventoFecha").value = "";
+      document.getElementById("eventoProducto").value = "";
       document.getElementById("eventoPromocion").checked = false;
       document.getElementById("eventoEspecial").checked = false;
       document.getElementById("eventoDescuento").value = "";
@@ -564,9 +591,12 @@
     }
   });
 
-  async function borrarEventoFuturo(fecha) {
+  async function borrarEventoFuturo(fecha, productoCodificado) {
     try {
-      const res  = await fetch(`/prediccion/eventos-futuros/${fecha}`, { method: "DELETE" });
+      const url = productoCodificado
+        ? `/prediccion/eventos-futuros/${fecha}?producto=${productoCodificado}`
+        : `/prediccion/eventos-futuros/${fecha}`;
+      const res  = await fetch(url, { method: "DELETE" });
       const data = await res.json();
       if (data.ok) cargarEventosFuturos();
     } catch (e) { /* silencioso */ }
